@@ -1821,12 +1821,28 @@ def main():
     deduped_pm = dedupe.dedupe_polymarket(sorted_pm) if sorted_pm else []
     deduped_web = websearch.dedupe_websearch(sorted_web) if sorted_web else []
 
-    # Minimum result guarantee: if all Reddit results were filtered out but
-    # we had raw results, keep top 3 by relevance regardless of score
-    if not deduped_reddit and normalized_reddit:
-        print("[REDDIT WARNING] All results scored below threshold, keeping top 3 by relevance", file=sys.stderr)
-        by_relevance = sorted(normalized_reddit, key=lambda item: item.relevance, reverse=True)
-        deduped_reddit = by_relevance[:3]
+    # Post-retrieval relevance filter: drop low-relevance items per source
+    # Only filter when there are enough items (>3) to avoid empty results
+    def _relevance_filter(items, source_name, threshold=0.3):
+        """Filter items below relevance threshold with minimum-result guarantee."""
+        if len(items) <= 3:
+            return items
+        passed = [i for i in items if getattr(i, 'relevance', 0.7) >= threshold]
+        if not passed:
+            # Keep top 3 by relevance if all filtered
+            print(f"[{source_name} WARNING] All results below relevance {threshold}, keeping top 3", file=sys.stderr)
+            by_rel = sorted(items, key=lambda x: getattr(x, 'relevance', 0.7), reverse=True)
+            return by_rel[:3]
+        return passed
+
+    deduped_reddit = _relevance_filter(deduped_reddit, "REDDIT")
+    deduped_x = _relevance_filter(deduped_x, "X")
+    deduped_youtube = _relevance_filter(deduped_youtube, "YOUTUBE")
+    deduped_tiktok = _relevance_filter(deduped_tiktok, "TIKTOK")
+    deduped_ig = _relevance_filter(deduped_ig, "INSTAGRAM")
+    deduped_hn = _relevance_filter(deduped_hn, "HN")
+    deduped_bsky = _relevance_filter(deduped_bsky, "BLUESKY")
+    deduped_ts = _relevance_filter(deduped_ts, "TRUTHSOCIAL")
 
     # Cross-source linking: annotate items that discuss the same story
     dedupe.cross_source_link(
