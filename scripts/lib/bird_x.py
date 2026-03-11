@@ -14,6 +14,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from .relevance import token_overlap_relevance as _compute_relevance
+
 # Path to the vendored bird-search wrapper
 _BIRD_SEARCH_MJS = Path(__file__).parent / "vendor" / "bird-search" / "bird-search.mjs"
 
@@ -233,7 +235,7 @@ def search_x(
     response = _run_bird_search(query, count, timeout)
 
     # Check if we got results
-    items = parse_bird_response(response)
+    items = parse_bird_response(response, query=core_topic)
 
     # Retry with fewer keywords if 0 results and query has 3+ words
     core_words = core_topic.split()
@@ -242,7 +244,7 @@ def search_x(
         _log(f"0 results for '{core_topic}', retrying with '{shorter}'")
         query = f"{shorter} since:{from_date}"
         response = _run_bird_search(query, count, timeout)
-        items = parse_bird_response(response)
+        items = parse_bird_response(response, query=core_topic)
 
     # Last-chance retry: use strongest remaining token (often the product name)
     if not items and core_words:
@@ -329,7 +331,7 @@ def search_handles(
                 continue
 
             response = json.loads(output)
-            items = parse_bird_response(response)
+            items = parse_bird_response(response, query=core_topic)
             all_items.extend(items)
 
         except json.JSONDecodeError:
@@ -340,11 +342,12 @@ def search_handles(
     return all_items
 
 
-def parse_bird_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
+def parse_bird_response(response: Dict[str, Any], query: str = "") -> List[Dict[str, Any]]:
     """Parse Bird response to match xai_x output format.
 
     Args:
         response: Raw Bird JSON response
+        query: Original search query for relevance scoring
 
     Returns:
         List of normalized item dicts matching xai_x.parse_x_response() format.
@@ -422,7 +425,7 @@ def parse_bird_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
             "date": date,
             "engagement": engagement if any(v is not None for v in engagement.values()) else None,
             "why_relevant": "",  # Bird doesn't provide relevance explanations
-            "relevance": 0.7,  # Default relevance, let score.py re-rank
+            "relevance": _compute_relevance(query, str(tweet.get("text", ""))) if query else 0.7,
         }
 
         items.append(item)

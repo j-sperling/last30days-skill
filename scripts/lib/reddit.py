@@ -49,6 +49,7 @@ DEPTH_CONFIG = {
 }
 
 from .query import extract_core_subject as _query_extract
+from .relevance import token_overlap_relevance
 
 # Reddit-specific noise words (preserves original smaller set)
 NOISE_WORDS = frozenset({
@@ -184,7 +185,7 @@ def _parse_date(created_utc) -> Optional[str]:
         return None
 
 
-def _normalize_post(post: Dict[str, Any], idx: int, source_label: str = "global") -> Dict[str, Any]:
+def _normalize_post(post: Dict[str, Any], idx: int, source_label: str = "global", query: str = "") -> Dict[str, Any]:
     """Normalize a ScrapeCreators Reddit post to our internal format."""
     permalink = post.get("permalink", "")
     url = f"https://www.reddit.com{permalink}" if permalink else post.get("url", "")
@@ -193,10 +194,16 @@ def _normalize_post(post: Dict[str, Any], idx: int, source_label: str = "global"
     if url and "reddit.com" not in url:
         url = ""
 
+    title = str(post.get("title", "")).strip()
+    selftext = str(post.get("selftext", ""))
+
+    # Compute relevance from query-to-content overlap (or default 0.7)
+    relevance = token_overlap_relevance(query, title + " " + selftext) if query else 0.7
+
     return {
         "id": f"R{idx}",
         "reddit_id": post.get("id", ""),
-        "title": str(post.get("title", "")).strip(),
+        "title": title,
         "url": url,
         "subreddit": str(post.get("subreddit", "")).strip(),
         "date": _parse_date(post.get("created_utc")),
@@ -205,7 +212,7 @@ def _normalize_post(post: Dict[str, Any], idx: int, source_label: str = "global"
             "num_comments": post.get("num_comments", 0),
             "upvote_ratio": post.get("upvote_ratio"),
         },
-        "relevance": 0.7,
+        "relevance": relevance,
         "why_relevant": f"Reddit {source_label} search",
         "selftext": str(post.get("selftext", ""))[:500],
     }
@@ -416,23 +423,23 @@ def search_reddit(
         _log(f"  -> {len(posts)} results")
         all_raw_posts.extend(posts)
 
-    # Normalize all posts
+    # Normalize all posts (with query for relevance scoring)
+    core = _extract_core_subject(topic)
     all_items = []
     for i, post in enumerate(all_raw_posts):
-        item = _normalize_post(post, i + 1, "global")
+        item = _normalize_post(post, i + 1, "global", query=core)
         all_items.append(item)
 
     # === Phase 3: Subreddit Discovery + Targeted Search ===
     discovered_subs = discover_subreddits(all_raw_posts, topic=topic, max_subs=config["subreddit_searches"])
     _log(f"Discovered subreddits: {discovered_subs}")
 
-    core = _extract_core_subject(topic)
     for sub in discovered_subs[:config["subreddit_searches"]]:
         _log(f"Subreddit search: r/{sub} for '{core}'")
         sub_posts = _subreddit_search(sub, core, token, sort="relevance", timeframe=timeframe)
         _log(f"  -> {len(sub_posts)} results from r/{sub}")
         for j, post in enumerate(sub_posts):
-            item = _normalize_post(post, len(all_items) + j + 1, f"r/{sub}")
+            item = _normalize_post(post, len(all_items) + j + 1, f"r/{sub}", query=core)
             all_items.append(item)
 
     # === Phase 4: Deduplicate ===

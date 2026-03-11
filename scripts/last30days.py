@@ -352,7 +352,7 @@ def _search_x(
             raw_response = {"error": str(e)}
             x_error = f"{type(e).__name__}: {e}"
 
-        x_items = bird_x.parse_bird_response(raw_response or {})
+        x_items = bird_x.parse_bird_response(raw_response or {}, query=topic)
 
         # Check for error in response (Bird returns list on success, dict on error)
         if raw_response and isinstance(raw_response, dict) and raw_response.get("error") and not x_error:
@@ -507,7 +507,7 @@ def _search_hackernews(
     except Exception as e:
         return [], f"{type(e).__name__}: {e}"
 
-    hn_items = hackernews.parse_hackernews_response(response)
+    hn_items = hackernews.parse_hackernews_response(response, query=topic)
 
     if response.get("error"):
         hn_error = response["error"]
