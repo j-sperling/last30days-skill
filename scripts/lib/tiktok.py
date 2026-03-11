@@ -17,6 +17,8 @@ try:
 except ImportError:
     _requests = None
 
+from . import http
+
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com/v1/tiktok"
 
 # Depth configurations: how many results to fetch / captions to extract
@@ -204,26 +206,36 @@ def search_tiktok(
     if not token:
         return {"items": [], "error": "No SCRAPECREATORS_API_KEY configured"}
 
-    if not _requests:
-        return {"items": [], "error": "requests library not installed"}
-
     config = DEPTH_CONFIG.get(depth, DEPTH_CONFIG["default"])
     core_topic = _extract_core_subject(topic)
 
     _log(f"Searching TikTok for '{core_topic}' (depth={depth}, count={config['results_per_page']})")
 
-    try:
-        resp = _requests.get(
-            f"{SCRAPECREATORS_BASE}/search/keyword",
-            params={"query": core_topic, "sort_by": "relevance"},
-            headers=_sc_headers(token),
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        _log(f"ScrapeCreators error: {e}")
-        return {"items": [], "error": f"{type(e).__name__}: {e}"}
+    if not _requests:
+        _log("requests library not installed, falling back to urllib")
+        try:
+            from urllib.parse import urlencode
+            params = urlencode({"query": core_topic, "sort_by": "relevance"})
+            url = f"{SCRAPECREATORS_BASE}/search/keyword?{params}"
+            headers = _sc_headers(token)
+            headers["User-Agent"] = http.USER_AGENT
+            data = http.get(url, headers=headers, timeout=30, retries=2)
+        except Exception as e:
+            _log(f"ScrapeCreators error (urllib): {e}")
+            return {"items": [], "error": f"{type(e).__name__}: {e}"}
+    else:
+        try:
+            resp = _requests.get(
+                f"{SCRAPECREATORS_BASE}/search/keyword",
+                params={"query": core_topic, "sort_by": "relevance"},
+                headers=_sc_headers(token),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            _log(f"ScrapeCreators error: {e}")
+            return {"items": [], "error": f"{type(e).__name__}: {e}"}
 
     # Items are nested under aweme_info
     raw_entries = data.get("search_item_list") or data.get("data") or []
