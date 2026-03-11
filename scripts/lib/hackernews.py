@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 from . import http
+from .query import extract_core_subject
 from .relevance import token_overlap_relevance
 
 ALGOLIA_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
@@ -85,14 +86,17 @@ def search_hackernews(
     from_ts = _date_to_unix(from_date)
     to_ts = _date_to_unix(to_date) + 86400  # Include the end date
 
-    _log(f"Searching for '{topic}' (since {from_date}, count={count})")
+    # Use extracted core subject instead of raw topic for cleaner Algolia matching
+    core = extract_core_subject(topic)
+    _log(f"Searching for '{core}' (raw: '{topic}', since {from_date}, count={count})")
 
-    # Use relevance-sorted search (better for topic matching)
+    # Use relevance-sorted search with minimum engagement filter
     params = {
-        "query": topic,
+        "query": core,
         "tags": "story",
-        "numericFilters": f"created_at_i>{from_ts},created_at_i<{to_ts}",
+        "numericFilters": f"created_at_i>{from_ts},created_at_i<{to_ts},points>5",
         "hitsPerPage": str(count),
+        "restrictSearchableAttributes": "title",
     }
 
     from urllib.parse import urlencode

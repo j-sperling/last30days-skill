@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from lib.query import NOISE_WORDS, extract_core_subject
+from lib.query import NOISE_WORDS, detect_query_type, extract_compound_terms, extract_core_subject
 
 
 class TestExtractCoreSubject(unittest.TestCase):
@@ -124,6 +124,50 @@ class TestNoiseWordsCompleteness(unittest.TestCase):
     def test_research_meta_present(self):
         for w in ('best', 'top', 'latest', 'trending', 'popular'):
             self.assertIn(w, NOISE_WORDS)
+
+
+class TestDetectQueryType(unittest.TestCase):
+    """Tests for detect_query_type()."""
+
+    def test_comparison(self):
+        self.assertEqual(detect_query_type("React vs Vue"), "comparison")
+
+    def test_how_to(self):
+        self.assertEqual(detect_query_type("how to deploy on Vercel"), "how_to")
+
+    def test_opinion(self):
+        self.assertEqual(detect_query_type("cursor IDE worth it"), "opinion")
+
+    def test_product(self):
+        self.assertEqual(detect_query_type("cursor IDE pricing"), "product")
+
+    def test_concept_default(self):
+        self.assertEqual(detect_query_type("multi-agent reinforcement learning"), "concept")
+
+    def test_how_prefix(self):
+        self.assertEqual(detect_query_type("how does Claude work"), "how_to")
+
+
+class TestExtractCompoundTerms(unittest.TestCase):
+    """Tests for extract_compound_terms()."""
+
+    def test_hyphenated(self):
+        terms = extract_compound_terms("multi-agent reinforcement learning")
+        self.assertIn("multi-agent", terms)
+
+    def test_title_case(self):
+        terms = extract_compound_terms("Claude Code and React Native")
+        self.assertTrue(any("Claude Code" in t for t in terms))
+        self.assertTrue(any("React Native" in t for t in terms))
+
+    def test_no_compounds(self):
+        terms = extract_compound_terms("python tutorial")
+        self.assertEqual(len(terms), 0)
+
+    def test_multiple_hyphens(self):
+        terms = extract_compound_terms("vc-backed start-up")
+        self.assertIn("vc-backed", terms)
+        self.assertIn("start-up", terms)
 
 
 if __name__ == "__main__":

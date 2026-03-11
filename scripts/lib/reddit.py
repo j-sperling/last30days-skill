@@ -48,7 +48,7 @@ DEPTH_CONFIG = {
     },
 }
 
-from .query import extract_core_subject as _query_extract
+from .query import detect_query_type, extract_core_subject as _query_extract
 from .relevance import token_overlap_relevance
 
 # Reddit-specific noise words (preserves original smaller set)
@@ -107,7 +107,9 @@ def expand_reddit_queries(topic: str, depth: str) -> List[str]:
     if core.lower() != original_clean.lower() and len(original_clean.split()) <= 8:
         queries.append(original_clean)
 
-    if depth in ("default", "deep"):
+    # Add opinion/review variant except for how_to/comparison queries
+    qtype = detect_query_type(topic)
+    if depth in ("default", "deep") and qtype not in ("how_to", "comparison"):
         queries.append(f"{core} worth it OR thoughts OR review")
 
     if depth == "deep":

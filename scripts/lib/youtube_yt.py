@@ -100,15 +100,16 @@ def search_youtube(
     _log(f"Searching YouTube for '{core_topic}' (since {from_date}, count={count})")
 
     # yt-dlp search with full metadata (no --flat-playlist so dates are real).
-    # No --dateafter — we filter by date in Python with a soft fallback,
-    # because YouTube search returns relevance-sorted results and strict date
-    # filtering returns 0 for evergreen topics like "thumbnail tips".
+    # --dateafter helps yt-dlp filter server-side, but Python soft filter
+    # (below) handles the fallback for evergreen topics with 0 recent results.
+    dateafter = from_date.replace("-", "")  # YYYYMMDD format for yt-dlp
     cmd = [
         "yt-dlp",
         f"ytsearch{count}:{core_topic}",
         "--dump-json",
         "--no-warnings",
         "--no-download",
+        "--dateafter", dateafter,
     ]
 
     preexec = os.setsid if hasattr(os, 'setsid') else None

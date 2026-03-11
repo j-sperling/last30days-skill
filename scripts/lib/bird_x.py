@@ -237,8 +237,20 @@ def search_x(
     # Check if we got results
     items = parse_bird_response(response, query=core_topic)
 
-    # Retry with fewer keywords if 0 results and query has 3+ words
+    # Retry with OR groups for multi-word queries (X supports OR operator)
     core_words = core_topic.split()
+    if not items and len(core_words) >= 2:
+        from .query import extract_compound_terms
+        compounds = extract_compound_terms(topic)
+        if compounds:
+            # Build OR-group query: ("multi-agent" OR "agent simulation") since:DATE
+            or_parts = ' OR '.join(f'"{t}"' for t in compounds[:3])
+            _log(f"0 results for '{core_topic}', retrying with OR groups: {or_parts}")
+            query = f"({or_parts}) since:{from_date}"
+            response = _run_bird_search(query, count, timeout)
+            items = parse_bird_response(response, query=core_topic)
+
+    # Retry with fewer keywords if still 0 results and query has 3+ words
     if not items and len(core_words) > 2:
         shorter = ' '.join(core_words[:2])
         _log(f"0 results for '{core_topic}', retrying with '{shorter}'")
