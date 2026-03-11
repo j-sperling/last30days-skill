@@ -7,10 +7,9 @@ Requires SCRAPECREATORS_API_KEY in config.
 API docs: https://scrapecreators.com/docs
 """
 
-import re
 import sys
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 try:
     import requests as _requests
@@ -25,43 +24,12 @@ DEPTH_CONFIG = {
     "deep":    {"results_per_page": 40},
 }
 
-STOPWORDS = frozenset({
-    'the', 'a', 'an', 'to', 'for', 'how', 'is', 'in', 'of', 'on',
-    'and', 'with', 'from', 'by', 'at', 'this', 'that', 'it', 'my',
-    'your', 'i', 'me', 'we', 'you', 'what', 'are', 'do', 'can',
-    'its', 'be', 'or', 'not', 'no', 'so', 'if', 'but', 'about',
-    'all', 'just', 'get', 'has', 'have', 'was', 'will',
-})
-
-SYNONYMS = {
-    'js': {'javascript'}, 'javascript': {'js'},
-    'ts': {'typescript'}, 'typescript': {'ts'},
-    'ai': {'artificial', 'intelligence'},
-    'ml': {'machine', 'learning'},
-    'react': {'reactjs'}, 'reactjs': {'react'},
-}
-
-
-def _tokenize(text: str) -> Set[str]:
-    """Lowercase, strip punctuation, remove stopwords, drop single-char tokens."""
-    words = re.sub(r'[^\w\s]', ' ', text.lower()).split()
-    tokens = {w for w in words if w not in STOPWORDS and len(w) > 1}
-    expanded = set(tokens)
-    for t in tokens:
-        if t in SYNONYMS:
-            expanded.update(SYNONYMS[t])
-    return expanded
-
-
-def _compute_relevance(query: str, text: str) -> float:
-    """Compute relevance as ratio of query tokens found in text. Floors at 0.1."""
-    q_tokens = _tokenize(query)
-    t_tokens = _tokenize(text)
-    if not q_tokens:
-        return 0.5
-    overlap = len(q_tokens & t_tokens)
-    ratio = overlap / len(q_tokens)
-    return max(0.1, min(1.0, ratio))
+from .relevance import (
+    STOPWORDS,
+    SYNONYMS,
+    token_overlap_relevance as _compute_relevance,
+    tokenize as _tokenize,
+)
 
 
 def _extract_core_subject(topic: str) -> str:

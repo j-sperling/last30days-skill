@@ -31,71 +31,12 @@ DEPTH_CONFIG = {
 # Max words to keep from each caption
 CAPTION_MAX_WORDS = 500
 
-# Stopwords for relevance computation (shared with youtube_yt.py pattern)
-STOPWORDS = frozenset({
-    'the', 'a', 'an', 'to', 'for', 'how', 'is', 'in', 'of', 'on',
-    'and', 'with', 'from', 'by', 'at', 'this', 'that', 'it', 'my',
-    'your', 'i', 'me', 'we', 'you', 'what', 'are', 'do', 'can',
-    'its', 'be', 'or', 'not', 'no', 'so', 'if', 'but', 'about',
-    'all', 'just', 'get', 'has', 'have', 'was', 'will',
-})
-
-# Synonym groups for relevance scoring
-SYNONYMS = {
-    'hip': {'rap', 'hiphop'},
-    'hop': {'rap', 'hiphop'},
-    'rap': {'hip', 'hop', 'hiphop'},
-    'hiphop': {'rap', 'hip', 'hop'},
-    'js': {'javascript'},
-    'javascript': {'js'},
-    'ts': {'typescript'},
-    'typescript': {'ts'},
-    'ai': {'artificial', 'intelligence'},
-    'ml': {'machine', 'learning'},
-    'react': {'reactjs'},
-    'reactjs': {'react'},
-}
-
-
-def _tokenize(text: str) -> Set[str]:
-    """Lowercase, strip punctuation, remove stopwords, drop single-char tokens."""
-    words = re.sub(r'[^\w\s]', ' ', text.lower()).split()
-    tokens = {w for w in words if w not in STOPWORDS and len(w) > 1}
-    expanded = set(tokens)
-    for t in tokens:
-        if t in SYNONYMS:
-            expanded.update(SYNONYMS[t])
-    return expanded
-
-
-def _compute_relevance(query: str, text: str, hashtags: List[str] = None) -> float:
-    """Compute relevance as ratio of query tokens found in text + hashtags.
-
-    Uses ratio overlap (intersection / query_length). Hashtags provide
-    a TikTok-specific relevance boost. Floors at 0.1.
-    """
-    q_tokens = _tokenize(query)
-
-    # Combine text and hashtags for matching
-    combined = text
-    if hashtags:
-        combined = f"{text} {' '.join(hashtags)}"
-    t_tokens = _tokenize(combined)
-
-    # Split concatenated hashtags (e.g., "claudecode" -> "claude", "code")
-    if hashtags:
-        for tag in hashtags:
-            tag_lower = tag.lower()
-            for qt in q_tokens:
-                if qt in tag_lower and qt != tag_lower:
-                    t_tokens.add(qt)
-
-    if not q_tokens:
-        return 0.5  # Neutral fallback
-
-    overlap = len(q_tokens & t_tokens)
-    ratio = overlap / len(q_tokens)
-    return max(0.1, min(1.0, ratio))
+from .relevance import (
+    STOPWORDS,
+    SYNONYMS,
+    token_overlap_relevance as _compute_relevance,
+    tokenize as _tokenize,
+)
 
 
 def _extract_core_subject(topic: str) -> str:

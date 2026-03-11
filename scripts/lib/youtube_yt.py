@@ -35,65 +35,12 @@ TRANSCRIPT_LIMITS = {
 # Max words to keep from each transcript
 TRANSCRIPT_MAX_WORDS = 500
 
-# Stopwords for relevance computation (common English words that dilute token overlap)
-STOPWORDS = frozenset({
-    'the', 'a', 'an', 'to', 'for', 'how', 'is', 'in', 'of', 'on',
-    'and', 'with', 'from', 'by', 'at', 'this', 'that', 'it', 'my',
-    'your', 'i', 'me', 'we', 'you', 'what', 'are', 'do', 'can',
-    'its', 'be', 'or', 'not', 'no', 'so', 'if', 'but', 'about',
-    'all', 'just', 'get', 'has', 'have', 'was', 'will',
-})
-
-
-# Synonym groups for relevance scoring (bidirectional expansion)
-SYNONYMS = {
-    'hip': {'rap', 'hiphop'},
-    'hop': {'rap', 'hiphop'},
-    'rap': {'hip', 'hop', 'hiphop'},
-    'hiphop': {'rap', 'hip', 'hop'},
-    'js': {'javascript'},
-    'javascript': {'js'},
-    'ts': {'typescript'},
-    'typescript': {'ts'},
-    'ai': {'artificial', 'intelligence'},
-    'ml': {'machine', 'learning'},
-    'react': {'reactjs'},
-    'reactjs': {'react'},
-    'svelte': {'sveltejs'},
-    'sveltejs': {'svelte'},
-    'vue': {'vuejs'},
-    'vuejs': {'vue'},
-}
-
-
-def _tokenize(text: str) -> Set[str]:
-    """Lowercase, strip punctuation, remove stopwords, drop single-char tokens.
-    Expands tokens with synonyms for better cross-domain matching."""
-    words = re.sub(r'[^\w\s]', ' ', text.lower()).split()
-    tokens = {w for w in words if w not in STOPWORDS and len(w) > 1}
-    # Expand synonyms
-    expanded = set(tokens)
-    for t in tokens:
-        if t in SYNONYMS:
-            expanded.update(SYNONYMS[t])
-    return expanded
-
-
-def _compute_relevance(query: str, title: str) -> float:
-    """Compute relevance as ratio of query tokens found in title.
-
-    Uses ratio overlap (intersection / query_length) so short queries
-    score higher when fully represented in the title. Floors at 0.1.
-    """
-    q_tokens = _tokenize(query)
-    t_tokens = _tokenize(title)
-
-    if not q_tokens:
-        return 0.5  # Neutral fallback for empty/stopword-only queries
-
-    overlap = len(q_tokens & t_tokens)
-    ratio = overlap / len(q_tokens)
-    return max(0.1, min(1.0, ratio))
+from .relevance import (
+    STOPWORDS,
+    SYNONYMS,
+    token_overlap_relevance as _compute_relevance,
+    tokenize as _tokenize,
+)
 
 
 def _log(msg: str):
