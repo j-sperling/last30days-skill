@@ -715,7 +715,7 @@ _ITEM_SOURCE_MAP = {
 _DEFAULT_TIEBREAKER = {"reddit": 0, "x": 1, "youtube": 2, "tiktok": 3, "instagram": 4, "hn": 5, "bluesky": 6, "truthsocial": 7, "polymarket": 8, "web": 9}
 
 
-def sort_items(items: List[Union[schema.RedditItem, schema.XItem, schema.WebSearchItem, schema.YouTubeItem, schema.TikTokItem, schema.InstagramItem, schema.HackerNewsItem, schema.PolymarketItem]], query_type: QueryType = None) -> List:
+def sort_items(items: List[Union[schema.RedditItem, schema.XItem, schema.WebSearchItem, schema.YouTubeItem, schema.TikTokItem, schema.InstagramItem, schema.HackerNewsItem, schema.BlueskyItem, schema.TruthSocialItem, schema.PolymarketItem]], query_type: QueryType = None) -> List:
     """Sort items by score (descending), then date, then source tiebreaker.
 
     Tiebreaker (tertiary sort key, after score and date): source priority
@@ -749,3 +749,21 @@ def sort_items(items: List[Union[schema.RedditItem, schema.XItem, schema.WebSear
         return (score, date_key, source_priority, text)
 
     return sorted(items, key=sort_key)
+
+
+def relevance_filter(items, source_name: str, threshold: float = 0.3):
+    """Filter items below relevance threshold with minimum-result guarantee.
+
+    Items with no relevance attribute are treated as 0.0 (fail the filter).
+    If all items are below threshold, keeps the top 3 by relevance.
+    Lists with 3 or fewer items are returned unchanged.
+    """
+    import sys
+    if len(items) <= 3:
+        return items
+    passed = [i for i in items if getattr(i, 'relevance', 0.0) >= threshold]
+    if not passed:
+        print(f"[{source_name} WARNING] All results below relevance {threshold}, keeping top 3", file=sys.stderr)
+        by_rel = sorted(items, key=lambda x: getattr(x, 'relevance', 0.0), reverse=True)
+        return by_rel[:3]
+    return passed

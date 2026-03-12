@@ -140,6 +140,27 @@ class TestSelectOpenAIModel(unittest.TestCase):
         self.assertEqual(result, "gpt-4.1-mini")
 
 
+class TestSelectOpenAIModelErrorPaths(unittest.TestCase):
+    def setUp(self):
+        from lib import cache
+        cache.MODEL_CACHE_FILE.unlink(missing_ok=True)
+
+    def test_http_error_returns_fallback(self):
+        """HTTPError during model fetch should return fallback, not crash."""
+        from unittest.mock import patch
+        from lib import http
+        with patch('lib.http.get', side_effect=http.HTTPError("Unauthorized", status_code=401)):
+            result = models.select_openai_model("bad-key", policy="auto")
+        self.assertEqual(result, models.OPENAI_FALLBACK_MODELS[0])
+
+    def test_http_403_returns_fallback(self):
+        from unittest.mock import patch
+        from lib import http
+        with patch('lib.http.get', side_effect=http.HTTPError("Forbidden", status_code=403)):
+            result = models.select_openai_model("bad-key", policy="auto")
+        self.assertEqual(result, models.OPENAI_FALLBACK_MODELS[0])
+
+
 class TestSelectXAIModel(unittest.TestCase):
     def test_latest_policy(self):
         result = models.select_xai_model(
