@@ -346,7 +346,7 @@ def get_web_search_source(config: Dict[str, Any]) -> Optional[str]:
 
 
 def get_missing_keys(config: Dict[str, Any]) -> str:
-    """Determine which sources are missing (accounting for Bird and ScrapeCreators).
+    """Determine which sources are missing (accounting for Bird).
 
     Returns: 'all', 'both', 'reddit', 'x', 'web', or 'none'
     """
@@ -358,8 +358,7 @@ def get_missing_keys(config: Dict[str, Any]) -> str:
     from . import bird_x
     has_bird = bird_x.is_bird_installed() and bird_x.is_bird_authenticated()
 
-    has_sc_x = bool(config.get('SCRAPECREATORS_API_KEY'))
-    has_x = has_xai or has_bird or has_sc_x
+    has_x = has_xai or has_bird
 
     if has_reddit and has_x and has_web:
         return 'none'
@@ -438,7 +437,9 @@ def validate_sources(requested: str, available: str, include_web: bool = False) 
 def get_x_source(config: Dict[str, Any]) -> Optional[str]:
     """Determine the best available X/Twitter source.
 
-    Priority: Bird (free) → xAI (paid API) → ScrapeCreators (shared key)
+    Priority: Bird (free) → xAI (paid API)
+
+    Keep X selection limited to documented, verified search backends.
 
     Args:
         config: Configuration dict from get_config()
@@ -446,7 +447,6 @@ def get_x_source(config: Dict[str, Any]) -> Optional[str]:
     Returns:
         'bird' if Bird is installed and authenticated,
         'xai' if XAI_API_KEY is configured,
-        'scrapecreators' if SCRAPECREATORS_API_KEY is configured,
         None if no X source available.
     """
     # Import here to avoid circular dependency
@@ -461,10 +461,6 @@ def get_x_source(config: Dict[str, Any]) -> Optional[str]:
     # Fall back to xAI if key exists
     if config.get('XAI_API_KEY'):
         return 'xai'
-
-    # Fall back to ScrapeCreators (same key as Reddit/TikTok/Instagram)
-    if config.get('SCRAPECREATORS_API_KEY'):
-        return 'scrapecreators'
 
     return None
 
@@ -584,15 +580,11 @@ def get_x_source_status(config: Dict[str, Any]) -> Dict[str, Any]:
     bird_status = bird_x.get_bird_status()
     xai_available = bool(config.get('XAI_API_KEY'))
 
-    sc_available = bool(config.get('SCRAPECREATORS_API_KEY'))
-
     # Determine active source
     if bird_status["authenticated"]:
         source = 'bird'
     elif xai_available:
         source = 'xai'
-    elif sc_available:
-        source = 'scrapecreators'
     else:
         source = None
 
@@ -602,6 +594,5 @@ def get_x_source_status(config: Dict[str, Any]) -> Dict[str, Any]:
         "bird_authenticated": bird_status["authenticated"],
         "bird_username": bird_status["username"],
         "xai_available": xai_available,
-        "scrapecreators_available": sc_available,
         "can_install_bird": bird_status["can_install"],
     }

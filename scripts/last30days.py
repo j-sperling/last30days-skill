@@ -1621,8 +1621,8 @@ def main():
     # Check available sources (accounting for Bird auto-detection)
     available = env.get_available_sources(config)
 
-    # Override available if Bird or ScrapeCreators provides X
-    if x_source in ('bird', 'scrapecreators'):
+    # Override available if Bird provides X
+    if x_source == 'bird':
         if available == 'reddit':
             available = 'both'  # Now have both Reddit + X
         elif available == 'reddit-web':

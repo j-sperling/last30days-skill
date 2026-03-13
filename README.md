@@ -14,12 +14,11 @@ clawhub install last30days-official
 
 **The AI world reinvents itself every month. This skill keeps you current.** /last30days researches your topic across Reddit, X, Bluesky, YouTube, TikTok, Instagram, Hacker News, Polymarket, and the web from the last 30 days, finds what the community is actually upvoting, sharing, betting on, and saying on camera, and writes you a grounded narrative with real citations. Whether it's Seedance 2.0 access, paper.design prompts, or the latest Nano Banana Pro techniques, you'll know what people who are paying attention already know.
 
-**New in v2.9.5 — Bluesky, Comparative Mode, ScrapeCreators X:**
+**New in v2.9.5 — Bluesky, Comparative Mode, and Config Improvements:**
 
 - **Bluesky/AT Protocol** is now a social source. Opt-in via `BSKY_HANDLE` + `BSKY_APP_PASSWORD` (create at bsky.app/settings/app-passwords). Full pipeline: search, score, dedupe, render.
 - **Comparative mode** - ask "X vs Y" (e.g., `/last30 cursor vs windsurf`) and get 3 parallel research passes with a side-by-side comparison: strengths, weaknesses, head-to-head table, and a data-driven verdict.
-- **ScrapeCreators X backend** - X/Twitter search now uses ScrapeCreators as an additional backend alongside Bird cookie auth.
-- **Per-project .env config** - drop a `.last30days.env` in your project root for per-project API keys.
+- **Per-project .env config** - drop a `.claude/last30days.env` in your project root for per-project API keys.
 - **SessionStart config check** - validates your config automatically when a Claude Code session starts.
 - **Expanded test coverage** - 455+ tests across all modules.
 
@@ -70,32 +69,31 @@ git clone https://github.com/mvanhorn/last30days-skill.git ~/.claude/skills/last
 # Add your API keys (optional if signed in to Codex)
 mkdir -p ~/.config/last30days
 cat > ~/.config/last30days/.env << 'EOF'
-SCRAPECREATORS_API_KEY=... # Reddit + TikTok + Instagram (one key, all three) — scrapecreators.com
-OPENAI_API_KEY=sk-...      # optional — legacy Reddit fallback if using `codex login`
-XAI_API_KEY=xai-...        # optional — cookie auth is default for X search
-BSKY_HANDLE=you.bsky.social       # optional — Bluesky search (create app password below)
-BSKY_APP_PASSWORD=xxxx-xxxx-xxxx  # optional — bsky.app/settings/app-passwords
+SCRAPECREATORS_API_KEY=... # Reddit + TikTok + Instagram (one key, all three) - scrapecreators.com
+OPENAI_API_KEY=sk-...      # optional - legacy Reddit fallback if using `codex login`
+AUTH_TOKEN=...             # recommended for X search - copy once from x.com cookies
+CT0=...                    # recommended for X search - copy once from x.com cookies
+XAI_API_KEY=xai-...        # optional - X fallback if you do not want cookie-based auth
+BSKY_HANDLE=you.bsky.social       # optional - Bluesky search (create app password below)
+BSKY_APP_PASSWORD=xxxx-xxxx-xxxx  # optional - bsky.app/settings/app-passwords
 EOF
 chmod 600 ~/.config/last30days/.env
 ```
 
 If you're signed in to Codex (`codex login`), the skill will use your Codex credentials for the OpenAI Responses API and you can omit `OPENAI_API_KEY`. If you're not signed in, run `codex login` first.
 
+For project-specific overrides, create `.claude/last30days.env` in the repo root. It overrides the global `~/.config/last30days/.env`.
+
 ### X Search Authentication
 
-X search reads your existing browser cookies  - no API keys or login commands needed.
+X search prefers explicit env auth. This keeps local runs headless and avoids browser-cookie and macOS Keychain prompts.
 
-**Safari (recommended on Mac):** Just be logged into x.com. No setup needed.
+**Recommended setup:**
+1. While logged into x.com once, open browser dev tools and copy the `auth_token` and `ct0` cookies for `x.com`.
+2. Save them as `AUTH_TOKEN` and `CT0` in `~/.config/last30days/.env`, export them in your shell, or add them to `.claude/last30days.env` for a single project.
+3. Re-run `/last30days`.
 
-**Chrome:** Works, but macOS will prompt you to allow Keychain access the first time. Click "Allow" (or "Always Allow" to stop future prompts).
-
-**Firefox:** Just be logged into x.com. No setup needed.
-
-**Manual fallback:** If cookie auto-detection doesn't work, set these env vars (grab them from your browser's dev tools → Application → Cookies → x.com):
-```bash
-export AUTH_TOKEN=your_auth_token
-export CT0=your_ct0_token
-```
+**xAI fallback:** If you do not want to provide `AUTH_TOKEN` and `CT0`, set `XAI_API_KEY` and the skill will use xAI's `x_search` backend instead.
 
 **Verify it's working:**
 ```bash
@@ -930,13 +928,13 @@ This example shows /last30days discovering **emerging developer workflows** - re
 
 ## Requirements
 
-- **OpenAI API key** - For Reddit research (uses web search via Responses API)
+- **OpenAI auth** - For Reddit research (uses web search via Responses API). Use `OPENAI_API_KEY` or `codex login`.
 - **Node.js 22+** - For X search (bundled Twitter GraphQL client)
-- **X session** - Be logged into x.com in your browser, or set `AUTH_TOKEN`/`CT0` env vars
-- **xAI API key** (optional fallback) - If the bundled search can't authenticate, falls back to xAI's Grok API
+- **Bundled X auth** - Set `AUTH_TOKEN` and `CT0` for popup-free local X search
+- **Alternate X backend** - Set `XAI_API_KEY` if bundled X auth is not configured
 - **yt-dlp** (optional) - For YouTube search + transcript extraction. Install via `brew install yt-dlp` or `pip install yt-dlp`. When present, automatically searches YouTube and extracts video transcripts as an additional source.
 
-At least one API key is required. X search works automatically if you're logged into x.com in your browser. YouTube search activates automatically when yt-dlp is in your PATH.
+At least one auth path is required. Reddit needs OpenAI auth. X needs either `AUTH_TOKEN` plus `CT0` or `XAI_API_KEY`. YouTube search activates automatically when yt-dlp is in your PATH.
 
 ## Troubleshooting
 
@@ -1143,7 +1141,7 @@ Inspired by [Peter Steinberger](https://x.com/steipete)'s yt-dlp + [summarize](h
 
 ### Bundled X search (v2.1)
 
-**X search is fully self-contained** - No external `bird` CLI or xAI API key needed. /last30days bundles a vendored subset of Bird's Twitter GraphQL client (MIT licensed, by Peter Steinberger). Just be logged into x.com in your browser and it auto-detects your session. Falls back to xAI API if bundled search can't authenticate.
+**X search is fully self-contained** - No external `bird` CLI install needed. /last30days bundles a vendored subset of Bird's Twitter GraphQL client (MIT licensed, by Peter Steinberger). With Node.js 22+ plus `AUTH_TOKEN` and `CT0`, it runs locally without browser-cookie prompts. Falls back to xAI API if bundled auth is not configured.
 
 ### Everything else (v2.1)
 
@@ -1190,7 +1188,7 @@ Thanks to the contributors who helped shape V2:
 | `api.scrapecreators.com` | Search query (Reddit + TikTok + Instagram) | SCRAPECREATORS_API_KEY |
 | `api.openai.com` | Search query (legacy Reddit fallback) | OPENAI_API_KEY |
 | `reddit.com` | Thread URLs for enrichment | None (public JSON) |
-| Twitter GraphQL / `api.x.ai` | Search query | Browser cookies or XAI_API_KEY |
+| Twitter GraphQL / `api.x.ai` | Search query | AUTH_TOKEN/CT0 or XAI_API_KEY |
 | `youtube.com` (via yt-dlp) | Search query | None (public search) |
 | `hn.algolia.com` | Search query | None (public API) |
 | `gamma-api.polymarket.com` | Search query | None (public API) |

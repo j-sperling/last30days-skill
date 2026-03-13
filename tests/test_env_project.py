@@ -173,5 +173,30 @@ class TestFilePermissions(unittest.TestCase):
             self.assertEqual(stderr.getvalue(), "")
 
 
+class TestXSourceSelection(unittest.TestCase):
+    """Tests for supported X backend selection."""
+
+    def test_get_x_source_ignores_scrapecreators_key(self):
+        config = {'SCRAPECREATORS_API_KEY': 'sc-key'}
+
+        with patch('lib.bird_x.is_bird_installed', return_value=False):
+            self.assertIsNone(env.get_x_source(config))
+
+    def test_get_x_source_status_ignores_scrapecreators_key(self):
+        config = {'SCRAPECREATORS_API_KEY': 'sc-key'}
+        bird_status = {
+            'installed': True,
+            'authenticated': False,
+            'username': None,
+            'can_install': False,
+        }
+
+        with patch('lib.bird_x.get_bird_status', return_value=bird_status):
+            status = env.get_x_source_status(config)
+
+        self.assertIsNone(status['source'])
+        self.assertFalse(status['xai_available'])
+
+
 if __name__ == "__main__":
     unittest.main()
