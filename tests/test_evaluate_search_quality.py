@@ -1,6 +1,7 @@
 """Tests for the local search-quality evaluation harness."""
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -34,6 +35,22 @@ class TestMetrics(unittest.TestCase):
         ]
         judgments = {"a": 3, "b": 0, "c": 2}
         self.assertGreater(evalsq.ndcg_at_k(ranking, judgments, 3), 0.8)
+
+    def test_ndcg_at_k_uses_best_items_from_judged_pool(self):
+        ranking = [
+            {"key": "a", "source": "reddit"},
+            {"key": "b", "source": "x"},
+            {"key": "c", "source": "youtube"},
+        ]
+        judged_pool = ranking + [
+            {"key": "d", "source": "reddit"},
+            {"key": "e", "source": "x"},
+        ]
+        judgments = {"a": 3, "b": 0, "c": 0, "d": 3, "e": 2}
+        self.assertLess(
+            evalsq.ndcg_at_k(ranking, judgments, 3, judged_pool),
+            1.0,
+        )
 
     def test_source_coverage_recall_uses_union_pool(self):
         judged_pool = [
@@ -70,11 +87,27 @@ class TestRankedItems(unittest.TestCase):
 class TestPathWithoutNode(unittest.TestCase):
     def test_removes_node_entries(self):
         path = "/usr/bin:/tmp/node-bin:/opt/homebrew/bin"
+
         def fake_exists(path_obj):
             return str(path_obj).endswith("/tmp/node-bin/node")
+
         with patch.object(evalsq.Path, "exists", fake_exists):
             filtered = evalsq.path_without_node(path)
         self.assertEqual(filtered, "/usr/bin:/opt/homebrew/bin")
+
+
+class TestEvalToolPath(unittest.TestCase):
+    def test_wraps_ytdlp_with_ignore_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            eval_home = Path(tmpdir)
+            with patch.object(evalsq.shutil, "which", return_value="/opt/homebrew/bin/yt-dlp"):
+                path_value = evalsq.create_eval_tool_path(eval_home, "/usr/bin")
+            wrapper = eval_home / "bin" / "yt-dlp"
+            self.assertTrue(wrapper.exists())
+            text = wrapper.read_text()
+            self.assertIn("--ignore-config", text)
+            self.assertIn("--no-cookies-from-browser", text)
+            self.assertEqual(path_value, f"{eval_home / 'bin'}:/usr/bin")
 
 
 class TestJudgeKeyResolution(unittest.TestCase):

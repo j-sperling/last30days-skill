@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -66,6 +67,31 @@ def path_without_node(path_value: str) -> str:
             continue
         parts.append(entry)
     return os.pathsep.join(parts)
+
+
+def write_exec_wrapper(path: Path, target: str, fixed_args: List[str]) -> None:
+    quoted_target = shlex.quote(target)
+    quoted_args = " ".join(shlex.quote(arg) for arg in fixed_args)
+    path.write_text(f"#!/bin/sh\nexec {quoted_target} {quoted_args} \"$@\"\n")
+    path.chmod(0o755)
+
+
+def create_eval_tool_path(eval_home: Path, base_path: str) -> str:
+    """Create safe wrapper binaries for local evaluation subprocesses."""
+    bin_dir = eval_home / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    real_ytdlp = shutil.which("yt-dlp")
+    if real_ytdlp:
+        write_exec_wrapper(
+            bin_dir / "yt-dlp",
+            real_ytdlp,
+            ["--ignore-config", "--no-cookies-from-browser"],
+        )
+
+    if not base_path:
+        return str(bin_dir)
+    return os.pathsep.join([str(bin_dir), base_path])
 
 
 def stable_item_key(source: str, item: Dict[str, Any]) -> str:
@@ -142,7 +168,12 @@ def precision_at_k(ranking: List[Dict[str, Any]], judgments: Dict[str, int], k: 
     return hits / len(top)
 
 
-def ndcg_at_k(ranking: List[Dict[str, Any]], judgments: Dict[str, int], k: int) -> float:
+def ndcg_at_k(
+    ranking: List[Dict[str, Any]],
+    judgments: Dict[str, int],
+    k: int,
+    judged_pool: Optional[List[Dict[str, Any]]] = None,
+) -> float:
     top = ranking[:k]
     if not top:
         return 0.0
@@ -154,7 +185,11 @@ def ndcg_at_k(ranking: List[Dict[str, Any]], judgments: Dict[str, int], k: int) 
         return total
 
     actual = [judgments.get(item["key"], 0) for item in top]
-    ideal = sorted(actual, reverse=True)
+    ideal_candidates = judged_pool or ranking
+    ideal = sorted(
+        (judgments.get(item["key"], 0) for item in ideal_candidates),
+        reverse=True,
+    )[:len(top)]
     ideal_score = dcg(ideal)
     if ideal_score == 0:
         return 0.0
@@ -181,10 +216,14 @@ def create_eval_env(include_web: bool) -> Tuple[Dict[str, str], Path]:
     config = envlib.get_config()
     eval_home = Path(tempfile.mkdtemp(prefix="last30days-eval-home-"))
     (eval_home / ".config").mkdir(parents=True, exist_ok=True)
+    safe_path = create_eval_tool_path(
+        eval_home,
+        path_without_node(os.environ.get("PATH", "")),
+    )
     passthrough = {
         "HOME": str(eval_home),
         "XDG_CONFIG_HOME": str(eval_home / ".config"),
-        "PATH": path_without_node(os.environ.get("PATH", "")),
+        "PATH": safe_path,
         "LANG": os.environ.get("LANG", "en_US.UTF-8"),
         "LC_ALL": os.environ.get("LC_ALL", ""),
         "TMPDIR": os.environ.get("TMPDIR", ""),
@@ -413,12 +452,12 @@ def summarize_topic(
         "query_type": query_type,
         "baseline": {
             "precision_at_5": precision_at_k(baseline_ranked, judgments, 5),
-            "ndcg_at_5": ndcg_at_k(baseline_ranked, judgments, 5),
+            "ndcg_at_5": ndcg_at_k(baseline_ranked, judgments, 5, judged_pool),
             "source_coverage_recall": source_coverage_recall(baseline_ranked, judged_pool, judgments),
         },
         "candidate": {
             "precision_at_5": precision_at_k(candidate_ranked, judgments, 5),
-            "ndcg_at_5": ndcg_at_k(candidate_ranked, judgments, 5),
+            "ndcg_at_5": ndcg_at_k(candidate_ranked, judgments, 5, judged_pool),
             "source_coverage_recall": source_coverage_recall(candidate_ranked, judged_pool, judgments),
         },
         "stability": {
