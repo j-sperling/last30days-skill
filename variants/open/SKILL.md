@@ -36,6 +36,13 @@ for dir in \
   [ -n "$dir" ] && [ -f "$dir/scripts/last30days.py" ] && SKILL_ROOT="$dir" && break
 done
 
+# Fallback: search Claude plugin cache (version-stamped directories)
+if [ -z "${SKILL_ROOT:-}" ]; then
+  for dir in "$HOME/.claude/plugins/cache/last30days"/*/; do
+    [ -f "${dir}scripts/last30days.py" ] && SKILL_ROOT="${dir%/}" && break
+  done
+fi
+
 if [ -z "${SKILL_ROOT:-}" ]; then
   echo "ERROR: Could not find scripts/last30days.py" >&2
   exit 1
