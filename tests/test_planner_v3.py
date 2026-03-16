@@ -46,6 +46,7 @@ class PlannerV3Tests(unittest.TestCase):
         )
         self.assertEqual("comparison", plan.intent)
         self.assertEqual(1, len(plan.subqueries))
+        self.assertEqual(["grounding", "x"], plan.subqueries[0].sources)
 
 
 if __name__ == "__main__":

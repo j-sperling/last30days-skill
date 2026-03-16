@@ -157,7 +157,7 @@ def _sanitize_plan(
         freshness_mode=freshness_mode,
         cluster_mode=cluster_mode,
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries, intent, depth)),
+        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries, intent, depth, list(source_weights))),
         source_weights=source_weights,
         notes=[str(note).strip() for note in raw.get("notes") or [] if str(note).strip()],
     )
@@ -189,20 +189,22 @@ def _trim_quick_subqueries(
     subqueries: list[schema.SubQuery],
     intent: str,
     depth: str,
+    available_sources: list[str],
 ) -> list[schema.SubQuery]:
     if depth != "quick":
         return subqueries
     priority = QUICK_SOURCE_PRIORITY.get(intent, QUICK_SOURCE_PRIORITY["breaking_news"])
-    ranked = {source: index for index, source in enumerate(priority)}
+    preferred_sources = [source for source in priority if source in available_sources][:2]
+    if not preferred_sources:
+        preferred_sources = available_sources[:2]
     trimmed = []
     for subquery in subqueries:
-        sources = sorted(subquery.sources, key=lambda source: ranked.get(source, len(ranked)))[:2]
         trimmed.append(
             schema.SubQuery(
                 label=subquery.label,
                 search_query=subquery.search_query,
                 ranking_query=subquery.ranking_query,
-                sources=sources,
+                sources=preferred_sources,
                 weight=subquery.weight,
             )
         )
@@ -269,7 +271,7 @@ def _fallback_plan(
         freshness_mode=_default_freshness(intent),
         cluster_mode=_default_cluster_mode(intent),
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries[:3], intent, depth)),
+        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries[:3], intent, depth, list(source_weights))),
         source_weights=_normalize_weights(source_weights),
         notes=["fallback-plan"],
     )
