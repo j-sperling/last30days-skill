@@ -22,13 +22,13 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 # Depth configurations: how many videos to search / transcribe
 DEPTH_CONFIG = {
     "quick": 6,
-    "default": 20,
+    "default": 8,
     "deep": 40,
 }
 
 TRANSCRIPT_LIMITS = {
     "quick": 0,
-    "default": 5,
+    "default": 2,
     "deep": 8,
 }
 

@@ -33,8 +33,8 @@ DEPTH_CONFIG = {
     },
     "default": {
         "global_searches": 2,
-        "subreddit_searches": 3,
-        "comment_enrichments": 5,
+        "subreddit_searches": 2,
+        "comment_enrichments": 3,
         "timeframe": "month",
     },
     "deep": {

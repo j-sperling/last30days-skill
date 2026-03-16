@@ -148,7 +148,14 @@ def run(
     bundle = schema.RetrievalBundle(artifacts={"grounding": []})
 
     futures = {}
-    with ThreadPoolExecutor(max_workers=max(4, len(plan.subqueries) * 3)) as executor:
+    stream_count = sum(
+        1
+        for subquery in plan.subqueries
+        for source in subquery.sources
+        if source in available
+    )
+    max_workers = max(4, min(16, stream_count or 1))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for subquery in plan.subqueries:
             for source in subquery.sources:
                 if source not in available:
