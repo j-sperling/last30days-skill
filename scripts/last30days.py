@@ -98,6 +98,29 @@ def emit_output(report: schema.Report, emit: str) -> str:
     raise SystemExit(f"Unsupported emit mode: {emit}")
 
 
+def persist_report(report: schema.Report) -> dict[str, int]:
+    import store
+
+    store.init_db()
+    topic_row = store.add_topic(report.topic)
+    topic_id = topic_row["id"]
+    source_mode = ",".join(sorted(report.items_by_source)) or "v3"
+    run_id = store.record_run(topic_id, source_mode=source_mode, status="running")
+    try:
+        findings = store.findings_from_report(report)
+        counts = store.store_findings(run_id, topic_id, findings)
+        store.update_run(
+            run_id,
+            status="completed",
+            findings_new=counts["new"],
+            findings_updated=counts["updated"],
+        )
+        return counts
+    except Exception as exc:
+        store.update_run(run_id, status="failed", error_message=str(exc)[:500])
+        raise
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Research a topic across live social, market, and grounded web sources.")
     parser.add_argument("topic", nargs="*", help="Research topic")
@@ -109,6 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mock", action="store_true", help="Use mock retrieval fixtures")
     parser.add_argument("--diagnose", action="store_true", help="Print provider and source availability")
     parser.add_argument("--save-dir", help="Optional directory for saving the rendered output")
+    parser.add_argument("--store", action="store_true", help="Persist ranked findings to the SQLite research store")
     return parser
 
 
@@ -138,6 +162,12 @@ def main() -> int:
         requested_sources=requested_sources,
         mock=args.mock,
     )
+    if args.store:
+        counts = persist_report(report)
+        sys.stderr.write(
+            f"[last30days] Stored {counts['new']} new, {counts['updated']} updated findings\n"
+        )
+        sys.stderr.flush()
 
     rendered = emit_output(report, args.emit)
     if args.save_dir:

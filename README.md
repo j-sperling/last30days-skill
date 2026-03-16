@@ -69,6 +69,17 @@ Config loads from:
 2. `.claude/last30days.env` in the repo tree
 3. `~/.config/last30days/.env`
 
+In OpenClaw, the gateway can also inject env from `~/.openclaw/.env` or `~/.openclaw/openclaw.json` before the skill runs.
+
+## Skill surfaces
+
+The repo now supports two skill wrappers on top of the same v3 engine:
+
+- root [SKILL.md](/Users/js/projects/last30days-skill/SKILL.md): one-shot research for Claude Code, Codex, Gemini, and basic OpenClaw installs
+- [variants/open/SKILL.md](/Users/js/projects/last30days-skill/variants/open/SKILL.md): persistent OpenClaw-style workflow with watchlists, briefings, and history
+
+The OpenClaw variant restores the upstream `watch`, `briefing`, and `history` behavior on top of the v3 pipeline. It does not restore the removed Brave / Parallel / OpenRouter web stack. Public web retrieval stays on Gemini grounding.
+
 ## CLI
 
 ```bash
@@ -77,6 +88,7 @@ python3 scripts/last30days.py "anthropic odds" --emit=json
 python3 scripts/last30days.py "claude code skills" --quick
 python3 scripts/last30days.py "remotion animations for Claude Code" --deep
 python3 scripts/last30days.py "ai coding agents" --search=reddit,x,grounding
+python3 scripts/last30days.py "openclaw skills" --store
 python3 scripts/last30days.py --diagnose
 ```
 
@@ -93,6 +105,38 @@ Depth modes:
 - default: balanced retrieval and enrichment
 - `--deep`: highest recall and heaviest enrichment
 
+## OpenClaw
+
+Official OpenClaw docs describe skills as AgentSkills-compatible folders loaded from workspace `<workspace>/skills`, then `~/.openclaw/skills`, then optional extra dirs via `skills.load.extraDirs` in `~/.openclaw/openclaw.json`. Relevant docs:
+
+- [OpenClaw skills](https://docs.openclaw.ai/tools/skills)
+- [OpenClaw skills config](https://docs.openclaw.ai/tools/skills-config)
+- [OpenClaw CLI skills](https://docs.openclaw.ai/cli/skills)
+- [ClawHub](https://docs.openclaw.ai/tools/clawhub)
+
+Manual install:
+
+```bash
+git clone https://github.com/mvanhorn/last30days-skill.git ~/.openclaw/skills/last30days
+cp ~/.openclaw/skills/last30days/variants/open/SKILL.md ~/.openclaw/skills/last30days/SKILL.md
+```
+
+Higher-precedence per-agent install:
+
+```bash
+git clone https://github.com/mvanhorn/last30days-skill.git ~/.openclaw/workspace/skills/last30days
+cp ~/.openclaw/workspace/skills/last30days/variants/open/SKILL.md ~/.openclaw/workspace/skills/last30days/SKILL.md
+```
+
+If you want to keep the repo elsewhere, add its parent directory to `skills.load.extraDirs` in `~/.openclaw/openclaw.json`.
+
+The OpenClaw wrapper exposes:
+
+- one-shot research with `--store`
+- `watch` via [scripts/watchlist.py](/Users/js/projects/last30days-skill/scripts/watchlist.py)
+- `briefing` via [scripts/briefing.py](/Users/js/projects/last30days-skill/scripts/briefing.py)
+- `history` via [scripts/store.py](/Users/js/projects/last30days-skill/scripts/store.py)
+
 ## Development
 
 Core commands:
@@ -101,6 +145,7 @@ Core commands:
 python3 scripts/last30days.py "test topic" --mock --emit=compact
 python3 -m unittest discover -s tests -p 'test_*.py'
 python3 -m py_compile $(rg --files scripts tests -g '*.py' -g '!scripts/lib/vendor/**')
+python3 scripts/verify_v3.py --skip-eval
 bash scripts/sync.sh
 ```
 
@@ -109,6 +154,7 @@ bash scripts/sync.sh
 - `~/.claude/skills/last30days`
 - `~/.agents/skills/last30days`
 - `~/.codex/skills/last30days`
+- `~/.openclaw/skills/last30days`
 
 ## Docs
 

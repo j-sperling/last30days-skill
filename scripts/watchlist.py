@@ -127,7 +127,7 @@ def _run_topic(topic: dict) -> dict:
             }
 
         report = schema.report_from_dict(json.loads(result.stdout))
-        findings = [_candidate_to_finding(candidate) for candidate in report.ranked_candidates[:25]]
+        findings = store.findings_from_report(report, limit=25)
         counts = store.store_findings(run_id, topic_id, findings)
         store.update_run(
             run_id,
@@ -161,24 +161,6 @@ def _run_topic(topic: dict) -> dict:
             duration_seconds=duration,
         )
         return {"topic": topic["name"], "status": "failed", "error": f"parse error: {exc}"}
-
-
-def _candidate_to_finding(candidate: schema.Candidate) -> dict:
-    item = schema.candidate_primary_item(candidate)
-    body = item.body if item and item.body else candidate.snippet or candidate.title
-    author = item.author if item and item.author else ""
-    return {
-        "source": schema.candidate_source_label(candidate),
-        "source_url": candidate.url,
-        "source_title": candidate.title,
-        "author": author,
-        "content": body,
-        "summary": candidate.explanation or candidate.snippet or "",
-        "engagement_score": candidate.engagement or 0,
-        "relevance_score": candidate.rerank_score or candidate.final_score,
-    }
-
-
 def cmd_config(args):
     if args.key == "budget":
         store.set_setting("daily_budget", str(args.value))

@@ -18,6 +18,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+SCRIPT_DIR = Path(__file__).parent.resolve()
+sys.path.insert(0, str(SCRIPT_DIR))
+
+from lib import schema
+
 DB_DIR = Path.home() / ".local" / "share" / "last30days"
 DB_PATH = DB_DIR / "research.db"
 
@@ -575,6 +580,45 @@ def get_trending(days: int = 7) -> List[Dict[str, Any]]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def finding_from_candidate(candidate: schema.Candidate) -> Dict[str, Any]:
+    """Convert a ranked candidate into a persisted finding."""
+    primary_item = schema.candidate_primary_item(candidate)
+    corroborating_sources = [
+        source for source in schema.candidate_sources(candidate)
+        if source and source != candidate.source
+    ]
+    summary = candidate.explanation or candidate.snippet or ""
+    if corroborating_sources:
+        prefix = f"Also seen in: {', '.join(corroborating_sources)}."
+        summary = f"{prefix} {summary}".strip()
+    body = (
+        primary_item.body
+        if primary_item and primary_item.body
+        else candidate.snippet or candidate.title
+    )
+    author = primary_item.author if primary_item and primary_item.author else ""
+    return {
+        "source": candidate.source or "unknown",
+        "source_url": candidate.url,
+        "source_title": candidate.title,
+        "author": author,
+        "content": body,
+        "summary": summary,
+        "engagement_score": candidate.engagement or 0,
+        "relevance_score": candidate.final_score or candidate.rerank_score or candidate.local_relevance,
+    }
+
+
+def findings_from_report(
+    report: schema.Report,
+    *,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Convert the ranked report into persisted findings."""
+    ranked = report.ranked_candidates[:limit] if limit is not None else report.ranked_candidates
+    return [finding_from_candidate(candidate) for candidate in ranked]
 
 
 # --- CLI interface ---

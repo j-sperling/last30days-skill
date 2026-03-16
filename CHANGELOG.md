@@ -11,6 +11,7 @@ This project follows semantic versioning. The v3 line is a hard-cut rewrite of t
 - replaced heuristic score stacking with local signals, weighted RRF, and a single-score reranker
 - replaced loose cross-source links with explicit clusters and representative selection
 - switched the default documentation and skill surface to the v3 report model
+- restored the persistent OpenClaw wrapper on top of the v3 engine, including `watch`, `briefing`, `history`, and one-shot `--store` persistence
 
 ### Removed
 

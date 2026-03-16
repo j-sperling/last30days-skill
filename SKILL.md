@@ -54,19 +54,41 @@ The runtime is a single v3 pipeline:
 7. cluster evidence
 8. render ranked clusters
 
+## Setup: resolve the skill root
+
+```bash
+for dir in \
+  "." \
+  "${CLAUDE_PLUGIN_ROOT:-}" \
+  "${GEMINI_EXTENSION_DIR:-}" \
+  "$HOME/.openclaw/workspace/skills/last30days" \
+  "$HOME/.openclaw/skills/last30days" \
+  "$HOME/.claude/skills/last30days" \
+  "$HOME/.agents/skills/last30days" \
+  "$HOME/.codex/skills/last30days"; do
+  [ -n "$dir" ] && [ -f "$dir/scripts/last30days.py" ] && SKILL_ROOT="$dir" && break
+done
+
+if [ -z "${SKILL_ROOT:-}" ]; then
+  echo "ERROR: Could not find scripts/last30days.py" >&2
+  exit 1
+fi
+```
+
 ## Default command
 
 ```bash
-python3 "${SKILL_ROOT}/scripts/last30days.py" "$ARGUMENTS" --emit=compact
+python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --emit=compact
 ```
 
 ## Useful commands
 
 ```bash
-python3 "${SKILL_ROOT}/scripts/last30days.py" "$ARGUMENTS" --emit=json
-python3 "${SKILL_ROOT}/scripts/last30days.py" "$ARGUMENTS" --quick
-python3 "${SKILL_ROOT}/scripts/last30days.py" "$ARGUMENTS" --deep
-python3 "${SKILL_ROOT}/scripts/last30days.py" "$ARGUMENTS" --search=reddit,x,grounding
+python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --emit=json
+python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --quick
+python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --deep
+python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --search=reddit,x,grounding
+python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --store
 python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 ```
 
@@ -78,6 +100,7 @@ python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 - `XAI_API_KEY` enables xAI reasoning and X search.
 - `AUTH_TOKEN` plus `CT0` enables Bird-backed X search.
 - `yt-dlp` enables YouTube.
+- For OpenClaw-specific watchlist, briefing, and history workflows, use `variants/open/SKILL.md`.
 
 ## Output model
 
