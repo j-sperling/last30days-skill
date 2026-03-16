@@ -37,7 +37,7 @@ Balanced live comparison:
 ```bash
 python3 scripts/evaluate_search_quality.py \
   --baseline=origin/main \
-  --candidate=HEAD \
+  --candidate=WORKTREE \
   --output-dir=/tmp/last30days-eval
 ```
 
@@ -45,8 +45,8 @@ Quick mock smoke:
 
 ```bash
 python3 scripts/evaluate_search_quality.py \
-  --baseline=HEAD \
-  --candidate=HEAD \
+  --baseline=HEAD~1 \
+  --candidate=WORKTREE \
   --mock \
   --quick \
   --timeout=60 \
@@ -57,6 +57,7 @@ python3 scripts/evaluate_search_quality.py \
 
 - `--baseline`
 - `--candidate`
+  - use `WORKTREE` to evaluate the current uncommitted checkout
 - `--search`
 - `--output-dir`
 - `--judge-model`

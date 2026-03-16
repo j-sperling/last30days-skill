@@ -293,6 +293,13 @@ def create_worktree(rev: str) -> Path:
     return worktree_dir
 
 
+def resolve_repo_dir(label: str) -> tuple[Path, bool]:
+    """Resolve a benchmark label into a repo directory and whether it is temporary."""
+    if label == "WORKTREE":
+        return REPO_ROOT, False
+    return create_worktree(label), True
+
+
 def remove_worktree(path: Path) -> None:
     subprocess.run(
         ["git", "worktree", "remove", "--force", str(path)],
@@ -418,7 +425,7 @@ def parse_topics_file(path: Path) -> list[tuple[str, str]]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Compare two last30days revisions on ranked candidate quality")
     parser.add_argument("--baseline", default="HEAD~1")
-    parser.add_argument("--candidate", default="HEAD")
+    parser.add_argument("--candidate", default="WORKTREE")
     parser.add_argument("--search", default=DEFAULT_SEARCH)
     parser.add_argument("--output-dir", default="tmp/search-quality")
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
@@ -438,8 +445,8 @@ def main() -> int:
     gemini_api_key = resolve_google_judge_api_key(config)
     run_env = create_eval_env()
 
-    baseline_dir = REPO_ROOT if args.baseline == "HEAD" else create_worktree(args.baseline)
-    candidate_dir = REPO_ROOT if args.candidate == "HEAD" else create_worktree(args.candidate)
+    baseline_dir, baseline_temp = resolve_repo_dir(args.baseline)
+    candidate_dir, candidate_temp = resolve_repo_dir(args.candidate)
     try:
         summaries = []
         failures = []
@@ -482,9 +489,9 @@ def main() -> int:
                 failures.append({"topic": topic, "query_type": query_type, "error": str(exc)})
         write_failure_summary(output_dir, args.baseline, args.candidate, summaries, failures)
     finally:
-        if baseline_dir != REPO_ROOT:
+        if baseline_temp:
             remove_worktree(baseline_dir)
-        if candidate_dir != REPO_ROOT:
+        if candidate_temp:
             remove_worktree(candidate_dir)
     result = {"output_dir": str(output_dir), "topics": len(topics), "failures": len(failures)}
     print(json.dumps(result, indent=2))

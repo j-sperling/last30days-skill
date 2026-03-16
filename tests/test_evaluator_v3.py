@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -65,6 +66,19 @@ class EvaluatorV3Tests(unittest.TestCase):
             self.assertEqual(1, len(metrics["failures"]))
             self.assertIn("broken topic", summary)
             self.assertIn("## Failures", summary)
+
+    def test_resolve_repo_dir_keeps_live_worktree(self):
+        repo_dir, is_temp = evaluator.resolve_repo_dir("WORKTREE")
+        self.assertEqual(evaluator.REPO_ROOT, repo_dir)
+        self.assertFalse(is_temp)
+
+    def test_resolve_repo_dir_materializes_git_ref_in_temp_worktree(self):
+        fake_dir = Path("/tmp/last30days-eval-fake")
+        with mock.patch.object(evaluator, "create_worktree", return_value=fake_dir) as create_worktree:
+            repo_dir, is_temp = evaluator.resolve_repo_dir("HEAD~2")
+        create_worktree.assert_called_once_with("HEAD~2")
+        self.assertEqual(fake_dir, repo_dir)
+        self.assertTrue(is_temp)
 
 
 if __name__ == "__main__":
