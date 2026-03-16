@@ -1,7 +1,7 @@
 {
   "name": "last30days",
-  "version": "2.9.5",
-  "description": "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, and the web.",
+  "version": "3.0.0",
+  "description": "Cluster-first last-30-days research across social, market, and grounded web sources.",
   "author": {
     "name": "Matt Van Horn",
     "email": "mvanhorn@gmail.com",
@@ -17,9 +17,9 @@
     "youtube",
     "tiktok",
     "instagram",
-    "trends",
-    "prompts",
-    "polymarket"
+    "grounding",
+    "polymarket",
+    "multi-source"
   ],
   "skills": ["./"],
   "hooks": {}

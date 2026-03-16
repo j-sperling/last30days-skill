@@ -1,195 +1,126 @@
-# How Reddit & X Search Work in last30days
+# How Search Works in v3.0.0
 
-## Architecture Overview
+`last30days` no longer runs a source-first pipeline. The v3 runtime is one ranked evidence pipeline that pulls from multiple live sources, fuses them, and renders clusters.
 
-```
-User: /last30days "kanye west"
-          ↓
-    ┌─────┴─────┐
-    ↓           ↓           (concurrent via ThreadPoolExecutor)
- [REDDIT]    [X/TWITTER]
-    ↓           ↓
- OpenAI     Bundled Bird or
- API        xAI API
-    ↓           ↓
- Parse       Parse
-    ↓           ↓
- Enrich      ───┘
- (fetch         ↓
-  actual     [MERGE]
-  upvotes)      ↓
-    ↓        [NORMALIZE → FILTER → SCORE → DEDUPE]
-    └───────────↓
-          [OUTPUT to SKILL.md agent]
+## Pipeline
+
+```text
+topic
+  -> provider resolution
+  -> query planner
+  -> per-(subquery, source) retrieval
+  -> normalization
+  -> within-source dedupe and local signals
+  -> snippet extraction
+  -> weighted RRF fusion
+  -> single-score rerank
+  -> clustering and representative selection
+  -> compact / json / context output
 ```
 
-Both searches run **in parallel** using Python's `ThreadPoolExecutor(max_workers=2)`.
+Core modules:
 
----
+- [scripts/lib/providers.py](/Users/js/projects/last30days-skill/scripts/lib/providers.py)
+- [scripts/lib/planner.py](/Users/js/projects/last30days-skill/scripts/lib/planner.py)
+- [scripts/lib/pipeline.py](/Users/js/projects/last30days-skill/scripts/lib/pipeline.py)
+- [scripts/lib/fusion.py](/Users/js/projects/last30days-skill/scripts/lib/fusion.py)
+- [scripts/lib/rerank.py](/Users/js/projects/last30days-skill/scripts/lib/rerank.py)
+- [scripts/lib/cluster.py](/Users/js/projects/last30days-skill/scripts/lib/cluster.py)
 
-## Reddit Search
+## Providers
 
-### How it works
+Gemini `3.1` preview is the primary runtime:
 
-Reddit search uses the **OpenAI Responses API** with the `web_search` tool, domain-filtered to `reddit.com` only.
+- planner: `gemini-3.1-flash-lite-preview`
+- rerank `quick` / `default`: `gemini-3.1-flash-lite-preview`
+- rerank `deep`: `gemini-3.1-pro-preview`
+- Google Search grounding: `gemini-3.1-flash-lite-preview`
 
-**API Call:**
-```
-POST https://api.openai.com/v1/responses
-Authorization: Bearer {OPENAI_API_KEY}
-```
+OpenAI and xAI can still provide planner and rerank responses when configured. X search can use xAI or Bird cookie auth. Public web retrieval is grounded through Gemini.
 
-**Payload:**
-```json
-{
-  "model": "gpt-5.2",
-  "tools": [{
-    "type": "web_search",
-    "filters": { "allowed_domains": ["reddit.com"] }
-  }],
-  "input": "Search Reddit for threads about {topic}..."
-}
-```
+## Query planning
 
-The prompt asks the model to:
-1. Extract core subject (strip noise words like "best", "tips", "top")
-2. Search 3 patterns: `"{topic} site:reddit.com"`, `"reddit {topic}"`, `"{topic} reddit"`
-3. Return JSON with `title`, `url`, `subreddit`, `date`, `relevance`
-4. URLs must contain `/r/` AND `/comments/` (real threads only)
+The planner emits:
 
-**Model fallback chain:** `gpt-5.2 → gpt-5.1 → gpt-5 → gpt-4.1 → gpt-4o → gpt-4o-mini`
-Triggers on HTTP 400/403 with access error keywords.
+- `intent`
+- `freshness_mode`
+- `cluster_mode`
+- `source_weights`
+- 1 to 3 `subqueries`
 
-### Enrichment (the secret sauce)
+Each subquery contains:
 
-After search, each thread gets **enriched** by hitting Reddit's free JSON API:
+- `label`
+- `search_query`
+- `ranking_query`
+- `sources`
+- `weight`
 
-```
-GET https://reddit.com/r/{sub}/comments/{id}/{slug}/.json
-```
+Quick and default modes clamp source selection by intent. Deep mode keeps the broader mix.
 
-No API key needed. This returns the actual thread data:
+## Retrieval
 
-| Data Point | Source |
-|---|---|
-| Upvotes (score) | Reddit JSON API |
-| Comment count | Reddit JSON API |
-| Upvote ratio | Reddit JSON API |
-| Top 10 comments (text + score) | Reddit JSON API |
-| 7 key comment insights | Extracted via heuristics |
-| Actual post date | `created_utc` timestamp |
+Retrieval runs per `(subquery, source)` pair, not just per source.
 
-**This is why Reddit results have real engagement metrics** — the enrichment step fetches actual upvote/comment data, not AI estimates.
+Supported live sources:
 
-### Depth settings
+- grounded web
+- Reddit
+- X
+- YouTube
+- TikTok
+- Instagram
+- Hacker News
+- Bluesky
+- Truth Social
+- Polymarket
+- Xiaohongshu
 
-| Depth | Threads requested | Timeout |
-|---|---|---|
-| `--quick` | 15-25 | 90s |
-| default | 30-50 | 120s |
-| `--deep` | 70-100 | 180s |
+Each source adapter is responsible for API interaction only. Ranking policy happens later in the shared pipeline.
 
----
+## Normalization and snippets
 
-## X/Twitter Search
+Every source payload becomes a common `SourceItem` in [schema.py](/Users/js/projects/last30days-skill/scripts/lib/schema.py). The pipeline then:
 
-X search has **two backends** — the skill auto-detects which to use.
+- filters by the requested date range
+- computes local relevance, freshness, engagement, and source-quality signals
+- dedupes within each retrieval stream
+- extracts a best-match snippet for reranking
 
-### Priority: Bundled Bird (env auth) → xAI API (paid)
+Grounded web items are required to have a usable in-window date before they survive normalization.
 
-```python
-if node_available and AUTH_TOKEN and CT0:
-    use bundled Bird    # Free, popup-free, env-authenticated
-elif XAI_API_KEY:
-    use xAI API         # Paid, uses grok-4-1-fast
-else:
-    skip X entirely     # No X results
-```
+## Fusion and reranking
 
-### Backend 1: xAI API
+First-stage fusion uses weighted reciprocal rank fusion over the per-stream ranked lists. The fused pool becomes `Candidate` objects with:
 
-**API Call:**
-```
-POST https://api.x.ai/v1/responses
-Authorization: Bearer {XAI_API_KEY}
-```
+- combined provenance
+- preserved per-source items
+- fused `rrf_score`
+- local scoring signals
 
-**Payload:**
-```json
-{
-  "model": "grok-4-1-fast",
-  "tools": [{ "type": "x_search" }],
-  "input": "Search X for posts about {topic} from {from_date} to {to_date}..."
-}
-```
+Reranking is intentionally simple. The reranker assigns one relevance score per candidate, then combines:
 
-The prompt asks grok to return JSON with:
-- `text`, `url`, `author_handle`, `date`
-- `engagement`: `{ likes, reposts, replies, quotes }`
-- `why_relevant`, `relevance` score
+- rerank score
+- normalized RRF
+- freshness
+- source quality
 
-**Engagement data comes from grok's x_search tool** - it has direct access to X's data.
+This avoids the heavier multi-axis LLM scoring that v3 explicitly removed.
 
-### Backend 2: Bundled Bird client (free alternative)
+## Clustering and rendering
 
-The repo vendors a search-only subset of Bird's Twitter GraphQL client and shells out to it with Node.js. No global `bird` install is required. The Python wrapper passes `AUTH_TOKEN` and `CT0` via env, which keeps normal local runs headless and avoids browser-cookie prompts.
+The ranked candidates are grouped into clusters for story-like and debate-like intents. The renderer then outputs:
 
-**Bundled Bird returns raw X API data** - likes, reposts, replies are real engagement metrics from X's API, not estimates.
+- cluster-first markdown for `compact` / `md`
+- the full machine-readable report for `json`
+- a shorter synthesis context for `context`
 
-| Metric | Bundled Bird | xAI API |
-|---|---|---|
-| Post text | Real | Real |
-| Likes/reposts | Real (X API) | Real (x_search tool) |
-| Replies/quotes | Real | Real |
-| Author handle | Real | Real |
-| Relevance score | Default 0.7 (re-ranked by score.py) | AI-assessed 0.0-1.0 |
+The default output is no longer a source dump.
 
-### Depth settings
+## Depth profiles
 
-| Depth | xAI posts | Bundled Bird results | xAI timeout | Bird timeout |
-|---|---|---|---|---|
-| `--quick` | 8-12 | 12 | 90s | 30s |
-| default | 20-30 | 30 | 120s | 45s |
-| `--deep` | 40-60 | 60 | 180s | 60s |
+- `--quick`: lowest latency, narrowest source mix, minimal enrichment
+- default: balanced recall and latency
+- `--deep`: broader retrieval and heavier enrichment
 
----
-
-## Post-Processing (both sources)
-
-After both searches complete:
-
-1. **Normalize** — consistent formatting, timezone handling
-2. **Date filter** — hard filter to requested date range
-3. **Score** — relevance scoring (engagement-weighted)
-4. **Sort** — highest scores first
-5. **Deduplicate** — remove duplicate URLs
-6. **Fallback** — if all items filtered out, keep top 3 by relevance
-
----
-
-## Error Handling
-
-| Layer | Strategy |
-|---|---|
-| HTTP requests | 3 retries with exponential backoff (1s → 2s → 3s) |
-| Model access errors | Automatic fallback to next model in chain |
-| Reddit enrichment | Per-item try/catch; keeps unenriched item on failure |
-| X source detection | Silent fallback from Bird → xAI → skip |
-| Overall pipeline | Errors stored as `reddit_error`/`x_error`, shown to user |
-
----
-
-## Key Files
-
-| File | Purpose |
-|---|---|
-| `scripts/last30days.py` | Main orchestrator, concurrent execution |
-| `scripts/lib/openai_reddit.py` | Reddit search via OpenAI Responses API |
-| `scripts/lib/reddit_enrich.py` | Fetch real engagement data from Reddit JSON API |
-| `scripts/lib/xai_x.py` | X search via xAI API |
-| `scripts/lib/bird_x.py` | X search via bundled Bird client (free) |
-| `scripts/lib/models.py` | Auto-select best available model |
-| `scripts/lib/env.py` | API key loading, source detection |
-| `scripts/lib/http.py` | HTTP transport with retries |
-| `scripts/lib/score.py` | Relevance scoring |
-| `scripts/lib/dedupe.py` | URL-based deduplication |
+Quick mode exists so agents can iterate fast without paying the full enrichment cost on every pass. Default and deep preserve richer retrieval for harder topics.

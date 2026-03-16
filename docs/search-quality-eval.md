@@ -1,48 +1,99 @@
-# Search Quality Eval
+# Search Quality Evaluation
 
-`scripts/evaluate_search_quality.py` is an optional local evaluation step for retrieval quality. It is not part of the user-facing runtime and does not need to run in CI by default.
+`scripts/evaluate_search_quality.py` compares two revisions of the v3 pipeline on a fixed topic set and writes a compact local benchmark bundle.
 
-What it does:
+It is a local engineering tool, not part of the user-facing runtime.
 
-- runs a baseline revision (default `origin/main`) against a candidate checkout
-- evaluates the fixed 5 reviewer topics by default
-- computes deterministic stability metrics:
-  - `Jaccard` overlap vs baseline
-  - retention vs baseline
-  - per-source counts and overlap
-- optionally calls Gemini as a judge for graded relevance labels and then computes:
-  - `Precision@5`
-  - `nDCG@5`
-  - source-coverage recall across the judged union pool
+## What it measures
 
-Recommended usage:
+For each topic, the evaluator compares `ranked_candidates` between a baseline revision and a candidate revision.
+
+Outputs include:
+
+- `Precision@5`
+- `nDCG@5`
+- source-coverage recall
+- overall Jaccard overlap
+- retention vs baseline
+- per-source overlap
+- optional failure summaries when a topic run breaks
+
+Judging is done with Gemini when a Google key is available.
+
+## Default topic set
+
+The built-in topics are:
+
+- `nano banana pro prompting`
+- `codex vs claude code`
+- `anthropic odds`
+- `kanye west`
+- `remotion animations for Claude Code`
+
+## Usage
+
+Balanced live comparison:
 
 ```bash
-uv run python scripts/evaluate_search_quality.py
+python3 scripts/evaluate_search_quality.py \
+  --baseline=origin/main \
+  --candidate=HEAD \
+  --output-dir=/tmp/last30days-eval
 ```
 
-Useful flags:
+Quick mock smoke:
 
 ```bash
-uv run python scripts/evaluate_search_quality.py \
-  --baseline-rev origin/main \
-  --candidate-rev HEAD \
-  --no-default-topics \
-  --topic "cursor IDE pricing" \
-  --per-source-limit 5
+python3 scripts/evaluate_search_quality.py \
+  --baseline=HEAD \
+  --candidate=HEAD \
+  --mock \
+  --quick \
+  --timeout=60 \
+  --output-dir=/tmp/last30days-eval-smoke
 ```
 
-Gemini configuration:
+## Useful flags
 
-- preferred on this workspace: set `GOOGLE_API_KEY`
-- also accepted: `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY`
-- optional: set `GEMINI_MODEL`
-- default model is `gemini-3-pro-preview` for the direct Gemini API
+- `--baseline`
+- `--candidate`
+- `--search`
+- `--output-dir`
+- `--judge-model`
+- `--timeout`
+- `--limit`
+- `--mock`
+- `--quick`
+- `--topics-file`
 
-Notes:
+## Output files
 
-- The script forces a clean env-based auth path when it shells out to `last30days.py`.
-- It passes `XAI_API_KEY`, `OPENAI_API_KEY`, and `SCRAPECREATORS_API_KEY`, but intentionally does not pass browser-cookie X auth. That keeps evaluation runs on the popup-free path.
-- It also strips `node` from the eval `PATH` and wraps `yt-dlp` with `--ignore-config`, so older revisions do not inherit local browser-cookie config either.
-- `Jaccard` and retention are regression guards, not truth metrics.
-- `Precision@5` and `nDCG@5` are only as good as the judged pool. They help compare revisions, but they are not a substitute for a larger labeled benchmark.
+The evaluator writes:
+
+- `summary.md`
+- `metrics.json`
+- `judgments/*.json`
+
+`metrics.json` contains both per-topic metrics and any recorded failures.
+
+## Auth and environment
+
+The evaluator shells out to `scripts/last30days.py` in separate worktrees when needed. It passes the normal runtime credentials through a clean env:
+
+- `GOOGLE_API_KEY`
+- `OPENAI_API_KEY`
+- `XAI_API_KEY`
+- `SCRAPECREATORS_API_KEY`
+- source-specific optional credentials
+
+The Google judge key can come from:
+
+- `GOOGLE_API_KEY`
+- `GEMINI_API_KEY`
+- `GOOGLE_GENAI_API_KEY`
+
+## Notes
+
+- Source coverage is based on fused v3 candidate provenance, not just the primary source label.
+- Candidate dates for judging come from the best dated `source_item` attached to each fused candidate.
+- Jaccard and retention are regression guards. They are useful for change detection, not for measuring absolute truth.

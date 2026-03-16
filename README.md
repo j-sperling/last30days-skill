@@ -1,53 +1,32 @@
-# /last30days v3.0.0
+# last30days v3.0.0
 
-`last30days` is a hard-cut rewrite of the recency research skill. The old heuristic-heavy, source-first stack is gone. The new runtime is a planner-driven retrieval pipeline with Gemini `3.1` preview grounding, weighted reciprocal rank fusion, snippet-first reranking, and cluster-first output.
+`last30days` is a live recency-research skill for the last 30 days. It searches across social, market, and grounded web sources, fuses everything into one ranked pool, and renders evidence clusters instead of source buckets.
 
-## What changed in v3.0.0
+The current runtime is a hard-cut v3 pipeline:
 
-- Replaced source-bucket ranking with a true global candidate pool.
-- Replaced generic web backends with Gemini Google Search grounding.
-- Replaced multi-factor heuristic ranking with:
-  - local deterministic signals
-  - weighted RRF fusion
-  - single-score reranking
-- Replaced loose cross-source links with real clusters.
-- Removed legacy modules:
-  - `query_type.py`
-  - `cache.py`
-  - `models.py`
-  - `score.py`
-  - `openai_reddit.py`
-  - `scrapecreators_x.py`
-  - `brave_search.py`
-  - `parallel_search.py`
-  - `openrouter_search.py`
-  - `websearch.py`
-
-## Architecture
-
-1. Query planner
+1. Query planning
 2. Per-`(subquery, source)` retrieval
 3. Normalization and within-source dedupe
-4. Best-snippet extraction for long items
-5. Weighted RRF fusion
-6. Single-score rerank
-7. Cluster formation plus representative selection
+4. Snippet extraction for long evidence
+5. Weighted reciprocal rank fusion
+6. Single-score reranking
+7. Cluster formation and representative selection
 8. Cluster-first rendering
 
-The main data model lives in [scripts/lib/schema.py](/Users/js/projects/last30days-skill/scripts/lib/schema.py). The orchestrator lives in [scripts/lib/pipeline.py](/Users/js/projects/last30days-skill/scripts/lib/pipeline.py).
+## Runtime
 
-## Runtime providers
+Gemini `3.1` preview is the primary runtime:
 
-Gemini `3.1` preview is the required Gemini runtime:
+- planner: `gemini-3.1-flash-lite-preview`
+- rerank `quick` / `default`: `gemini-3.1-flash-lite-preview`
+- rerank `deep`: `gemini-3.1-pro-preview`
+- Google Search grounding: `gemini-3.1-flash-lite-preview`
 
-- planner default: `gemini-3.1-flash-lite-preview`
-- rerank quick/default: `gemini-3.1-flash-lite-preview`
-- rerank deep: `gemini-3.1-pro-preview`
-- grounding: `gemini-3.1-flash-lite-preview`
+OpenAI and xAI are still supported as fallback reasoning providers. X retrieval can use xAI or Bird cookie auth. Public web retrieval is grounded through Gemini.
 
-OpenAI and xAI remain supported as fallback reasoning providers, but grounded web retrieval always stays on Gemini `3.1` preview.
+## Sources
 
-## Supported sources
+Potential sources:
 
 - Reddit
 - X
@@ -58,14 +37,14 @@ OpenAI and xAI remain supported as fallback reasoning providers, but grounded we
 - Bluesky
 - Truth Social
 - Polymarket
-- Gemini grounded web
+- grounded web
 - Xiaohongshu
 
-Availability depends on credentials and local tools.
+Availability depends on credentials and local tools. Run `--diagnose` to see what is live in the current environment.
 
 ## Configuration
 
-Core environment variables:
+Primary environment variables:
 
 ```bash
 GOOGLE_API_KEY=...
@@ -84,13 +63,20 @@ LAST30DAYS_GROUNDING_MODEL=gemini-3.1-flash-lite-preview
 LAST30DAYS_X_BACKEND=xai
 ```
 
+Config loads from:
+
+1. process env
+2. `.claude/last30days.env` in the repo tree
+3. `~/.config/last30days/.env`
+
 ## CLI
 
 ```bash
 python3 scripts/last30days.py "codex vs claude code"
 python3 scripts/last30days.py "anthropic odds" --emit=json
-python3 scripts/last30days.py "best react animation libraries" --quick
-python3 scripts/last30days.py "ai coding agents" --deep --search=reddit,x,grounding
+python3 scripts/last30days.py "claude code skills" --quick
+python3 scripts/last30days.py "remotion animations for Claude Code" --deep
+python3 scripts/last30days.py "ai coding agents" --search=reddit,x,grounding
 python3 scripts/last30days.py --diagnose
 ```
 
@@ -101,17 +87,35 @@ Emit modes:
 - `json`
 - `context`
 
+Depth modes:
+
+- `--quick`: low-latency first pass
+- default: balanced retrieval and enrichment
+- `--deep`: highest recall and heaviest enrichment
+
 ## Development
 
-Run the mock pipeline:
+Core commands:
 
 ```bash
 python3 scripts/last30days.py "test topic" --mock --emit=compact
 python3 -m unittest discover -s tests -p 'test_*.py'
-```
-
-After edits, deploy the skill adapters:
-
-```bash
+python3 -m py_compile $(rg --files scripts tests -g '*.py' -g '!scripts/lib/vendor/**')
 bash scripts/sync.sh
 ```
+
+`scripts/sync.sh` updates the installed skill copies under:
+
+- `~/.claude/skills/last30days`
+- `~/.agents/skills/last30days`
+- `~/.codex/skills/last30days`
+
+## Docs
+
+Active docs:
+
+- [How Search Works](/Users/js/projects/last30days-skill/docs/how-search-works.md)
+- [Search Quality Eval](/Users/js/projects/last30days-skill/docs/search-quality-eval.md)
+- [Changelog](/Users/js/projects/last30days-skill/CHANGELOG.md)
+
+Archived materials under `docs/plans/` and `docs/comparison-results/` are historical reference, not the current product description.
