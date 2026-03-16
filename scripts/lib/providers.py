@@ -187,6 +187,38 @@ class XAIClient(ReasoningClient):
         return extract_openai_text(response)
 
 
+def mock_runtime(config: dict[str, Any], depth: str) -> schema.ProviderRuntime:
+    """Resolve model pins for mock mode without requiring live credentials."""
+    provider_name = (config.get("LAST30DAYS_REASONING_PROVIDER") or "gemini").lower()
+    if provider_name == "auto":
+        provider_name = "gemini"
+
+    planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or GEMINI_FLASH_LITE
+    rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or (GEMINI_PRO if depth == "deep" else GEMINI_FLASH_LITE)
+    grounding_model = config.get("LAST30DAYS_GROUNDING_MODEL") or GEMINI_FLASH_LITE
+    _require_gemini_31_preview(grounding_model, role="grounding")
+
+    if provider_name == "gemini":
+        _require_gemini_31_preview(planner_model, role="planner")
+        _require_gemini_31_preview(rerank_model, role="rerank")
+    elif provider_name == "openai":
+        planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or OPENAI_DEFAULT
+        rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or OPENAI_DEFAULT
+    elif provider_name == "xai":
+        planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or XAI_DEFAULT
+        rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or XAI_DEFAULT
+    else:
+        raise RuntimeError(f"Unsupported reasoning provider: {provider_name}")
+
+    return schema.ProviderRuntime(
+        reasoning_provider=provider_name,
+        planner_model=planner_model,
+        rerank_model=rerank_model,
+        grounding_model=grounding_model,
+        x_search_backend=_resolve_x_backend(config),
+    )
+
+
 def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.ProviderRuntime, ReasoningClient]:
     """Resolve the reasoning provider and pinned models."""
     provider_name = (config.get("LAST30DAYS_REASONING_PROVIDER") or "auto").lower()

@@ -35,6 +35,18 @@ class PlannerV3Tests(unittest.TestCase):
         self.assertEqual("factual", plan.intent)
         self.assertEqual("none", plan.cluster_mode)
 
+    def test_quick_mode_collapses_fallback_to_single_subquery(self):
+        plan = planner.plan_query(
+            topic="codex vs claude code",
+            available_sources=["reddit", "x", "grounding"],
+            requested_sources=None,
+            depth="quick",
+            provider=None,
+            model=None,
+        )
+        self.assertEqual("comparison", plan.intent)
+        self.assertEqual(1, len(plan.subqueries))
+
 
 if __name__ == "__main__":
     unittest.main()

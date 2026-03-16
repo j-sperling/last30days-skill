@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime
 from urllib.parse import urlparse
 
-from . import schema
+from . import dates, providers, schema
 
 
 def grounded_search(
@@ -33,17 +35,23 @@ Date range: {from_date} to {to_date}
 Prefer recent reporting, primary sources, and direct evidence.
 """.strip()
     payload = provider.ground_search(model, prompt)
-    items = _items_from_grounding_payload(payload, subquery.label)
+    items = _items_from_grounding_payload(payload, subquery.label, date_range)
     if depth == "deep" and items and hasattr(provider, "url_context_json"):
         _refine_with_url_context(provider, model, subquery, items)
     artifact = _artifact_from_payload(payload, subquery.label)
     return items, artifact
 
 
-def _items_from_grounding_payload(payload: dict, label: str) -> list[dict]:
+def _items_from_grounding_payload(
+    payload: dict,
+    label: str,
+    date_range: tuple[str, str],
+) -> list[dict]:
+    from_date, to_date = date_range
     metadata = _grounding_metadata(payload)
     chunks = metadata.get("groundingChunks") or []
     supports = metadata.get("groundingSupports") or []
+    answer_text = _grounding_answer_text(payload)
 
     support_map: dict[int, list[str]] = {}
     for support in supports:
@@ -61,6 +69,14 @@ def _items_from_grounding_payload(payload: dict, label: str) -> list[dict]:
             continue
         snippet = " ".join(dict.fromkeys(support_map.get(index, []))).strip()
         title = str(web.get("title") or "").strip()
+        published_at = _extract_grounding_date(
+            web=web,
+            support_texts=support_map.get(index, []),
+            answer_text=answer_text,
+            from_date=from_date,
+            to_date=to_date,
+            url=url,
+        )
         items.append(
             {
                 "id": f"WG{index + 1}",
@@ -68,13 +84,14 @@ def _items_from_grounding_payload(payload: dict, label: str) -> list[dict]:
                 "url": url,
                 "source_domain": _domain(url),
                 "snippet": snippet,
-                "date": None,
+                "date": published_at,
                 "relevance": 0.8,
                 "why_relevant": f"Gemini Google Search grounding ({label})",
                 "metadata": {
                     "grounding_query_label": label,
                     "grounding_chunk_index": index,
                     "supports": support_map.get(index, []),
+                    "grounded_answer_excerpt": answer_text[:400] if answer_text else "",
                 },
             }
         )
@@ -118,6 +135,7 @@ def _artifact_from_payload(payload: dict, label: str) -> dict:
     metadata = _grounding_metadata(payload)
     return {
         "label": label,
+        "answerText": _grounding_answer_text(payload),
         "webSearchQueries": metadata.get("webSearchQueries") or [],
         "searchEntryPoint": metadata.get("searchEntryPoint"),
         "groundingChunks": metadata.get("groundingChunks") or [],
@@ -131,6 +149,91 @@ def _grounding_metadata(payload: dict) -> dict:
         if isinstance(metadata, dict):
             return metadata
     return {}
+
+
+def _grounding_answer_text(payload: dict) -> str:
+    return providers.extract_gemini_text(payload).strip()
+
+
+def _extract_grounding_date(
+    *,
+    web: dict,
+    support_texts: list[str],
+    answer_text: str,
+    from_date: str,
+    to_date: str,
+    url: str,
+) -> str | None:
+    for key in ("published_at", "publishedAt", "publicationDate", "date", "time"):
+        value = _normalize_date_candidate(web.get(key))
+        if _in_range(value, from_date, to_date):
+            return value
+
+    value = _extract_date_from_url(url)
+    if _in_range(value, from_date, to_date):
+        return value
+
+    for text in support_texts:
+        value = _extract_labeled_date(text)
+        if _in_range(value, from_date, to_date):
+            return value
+
+    value = _extract_labeled_date(answer_text)
+    if _in_range(value, from_date, to_date):
+        return value
+
+    return None
+
+
+def _normalize_date_candidate(value: object) -> str | None:
+    if value is None:
+        return None
+    parsed = dates.parse_date(str(value).strip())
+    if not parsed:
+        return None
+    return parsed.date().isoformat()
+
+
+def _in_range(value: str | None, from_date: str, to_date: str) -> bool:
+    return bool(value) and from_date <= value <= to_date
+
+
+def _extract_date_from_url(url: str) -> str | None:
+    patterns = [
+        r"/(20\d{2})/(0[1-9]|1[0-2])/(0[1-9]|[12]\d|3[01])(?:/|$)",
+        r"(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if not match:
+            continue
+        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+    return None
+
+
+def _extract_labeled_date(text: str) -> str | None:
+    if not text:
+        return None
+    patterns = [
+        r"(?i)\b(?:published|updated)\s*:?\s*(20\d{2}-\d{2}-\d{2})",
+        r"(?i)\b(?:published|updated)\s*:?\s*([A-Z][a-z]+ \d{1,2}, 20\d{2})",
+        r"(?i)\b(?:published|updated)\s*:?\s*(\d{1,2} [A-Z][a-z]+ 20\d{2})",
+    ]
+    formats = ["%Y-%m-%d", "%B %d, %Y", "%d %B %Y"]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        value = match.group(1).strip()
+        normalized = _normalize_date_candidate(value)
+        if normalized:
+            return normalized
+        for fmt in formats:
+            try:
+                return datetime.strptime(value, fmt).date().isoformat()
+            except ValueError:
+                continue
+    return None
 
 
 def _domain(url: str) -> str:

@@ -52,7 +52,8 @@ def normalize_source_items(
     if normalizer is None:
         raise ValueError(f"Unsupported source: {source}")
     normalized = [normalizer(source, item, index, from_date, to_date) for index, item in enumerate(items)]
-    return filter_by_date_range(normalized, from_date, to_date)
+    require_date = source == "grounding"
+    return filter_by_date_range(normalized, from_date, to_date, require_date=require_date)
 
 
 def _domain_from_url(url: str) -> str | None:

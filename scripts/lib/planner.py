@@ -17,6 +17,16 @@ ALLOWED_INTENTS = {
     "prediction",
 }
 ALLOWED_CLUSTER_MODES = {"none", "story", "workflow", "market", "debate"}
+QUICK_SOURCE_PRIORITY = {
+    "factual": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
+    "product": ["reddit", "grounding", "x", "youtube", "hackernews", "polymarket"],
+    "concept": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
+    "opinion": ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
+    "how_to": ["grounding", "reddit", "youtube", "x", "hackernews", "polymarket"],
+    "comparison": ["grounding", "x", "reddit", "hackernews", "youtube", "polymarket"],
+    "breaking_news": ["grounding", "x", "reddit", "hackernews", "youtube", "polymarket"],
+    "prediction": ["polymarket", "x", "grounding", "hackernews", "reddit", "youtube"],
+}
 
 
 def plan_query(
@@ -33,12 +43,12 @@ def plan_query(
     if provider and model:
         try:
             raw = provider.generate_json(model, prompt)
-            plan = _sanitize_plan(raw, topic, available_sources, requested_sources)
+            plan = _sanitize_plan(raw, topic, available_sources, requested_sources, depth)
             if plan.subqueries:
                 return plan
         except Exception:
             pass
-    return _fallback_plan(topic, available_sources, requested_sources)
+    return _fallback_plan(topic, available_sources, requested_sources, depth)
 
 
 def _build_prompt(
@@ -92,6 +102,7 @@ def _sanitize_plan(
     topic: str,
     available_sources: list[str],
     requested_sources: list[str] | None,
+    depth: str,
 ) -> schema.QueryPlan:
     requested = set(requested_sources or [])
     available = set(available_sources)
@@ -128,8 +139,10 @@ def _sanitize_plan(
                 weight=max(0.05, float(subquery.get("weight") or 1.0)),
             )
         )
+    if depth == "quick" and subqueries:
+        subqueries = subqueries[:1]
     if not subqueries:
-        return _fallback_plan(topic, available_sources, requested_sources)
+        return _fallback_plan(topic, available_sources, requested_sources, depth)
 
     intent = str(raw.get("intent") or _infer_intent(topic)).strip()
     if intent not in ALLOWED_INTENTS:
@@ -144,7 +157,7 @@ def _sanitize_plan(
         freshness_mode=freshness_mode,
         cluster_mode=cluster_mode,
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(subqueries),
+        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries, intent, depth)),
         source_weights=source_weights,
         notes=[str(note).strip() for note in raw.get("notes") or [] if str(note).strip()],
     )
@@ -172,10 +185,35 @@ def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
     }
 
 
+def _trim_quick_subqueries(
+    subqueries: list[schema.SubQuery],
+    intent: str,
+    depth: str,
+) -> list[schema.SubQuery]:
+    if depth != "quick":
+        return subqueries
+    priority = QUICK_SOURCE_PRIORITY.get(intent, QUICK_SOURCE_PRIORITY["breaking_news"])
+    ranked = {source: index for index, source in enumerate(priority)}
+    trimmed = []
+    for subquery in subqueries:
+        sources = sorted(subquery.sources, key=lambda source: ranked.get(source, len(ranked)))[:2]
+        trimmed.append(
+            schema.SubQuery(
+                label=subquery.label,
+                search_query=subquery.search_query,
+                ranking_query=subquery.ranking_query,
+                sources=sources,
+                weight=subquery.weight,
+            )
+        )
+    return trimmed
+
+
 def _fallback_plan(
     topic: str,
     available_sources: list[str],
     requested_sources: list[str] | None,
+    depth: str,
 ) -> schema.QueryPlan:
     intent = _infer_intent(topic)
     allowed_sources = requested_sources or available_sources
@@ -192,7 +230,7 @@ def _fallback_plan(
         weight=1.0,
     )]
 
-    if intent == "comparison":
+    if depth != "quick" and intent == "comparison":
         entities = _comparison_entities(topic)
         if entities:
             for index, entity in enumerate(entities[:2], start=1):
@@ -205,7 +243,7 @@ def _fallback_plan(
                         weight=0.65,
                     )
                 )
-    elif intent == "prediction":
+    elif depth != "quick" and intent == "prediction":
         subqueries.append(
             schema.SubQuery(
                 label="odds",
@@ -215,7 +253,7 @@ def _fallback_plan(
                 weight=0.7,
             )
         )
-    elif intent == "breaking_news":
+    elif depth != "quick" and intent == "breaking_news":
         subqueries.append(
             schema.SubQuery(
                 label="reaction",
@@ -231,7 +269,7 @@ def _fallback_plan(
         freshness_mode=_default_freshness(intent),
         cluster_mode=_default_cluster_mode(intent),
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(subqueries[:3]),
+        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries[:3], intent, depth)),
         source_weights=_normalize_weights(source_weights),
         notes=["fallback-plan"],
     )

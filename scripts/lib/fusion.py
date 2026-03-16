@@ -29,6 +29,9 @@ def weighted_rrf(
         for rank, item in enumerate(items, start=1):
             key = candidate_key(item)
             score = weight / (RRF_K + rank)
+            item_local_relevance = float(item.metadata.get("local_relevance", item.relevance_hint))
+            item_freshness = int(item.metadata.get("freshness", 0))
+            item_source_quality = float(item.metadata.get("source_quality", 0.6))
             if key not in candidates:
                 candidates[key] = schema.Candidate(
                     candidate_id=key,
@@ -39,33 +42,63 @@ def weighted_rrf(
                     snippet=item.snippet,
                     subquery_labels=[label],
                     native_ranks={f"{label}:{source}": rank},
-                    local_relevance=float(item.metadata.get("local_relevance", item.relevance_hint)),
-                    freshness=int(item.metadata.get("freshness", 0)),
+                    local_relevance=item_local_relevance,
+                    freshness=item_freshness,
                     engagement=item.metadata.get("engagement_score"),
-                    source_quality=float(item.metadata.get("source_quality", 0.6)),
+                    source_quality=item_source_quality,
                     rrf_score=score,
-                    metadata={"item": item.to_dict()},
+                    sources=[item.source],
+                    source_items=[item],
+                    metadata={
+                        "provenance": [
+                            {
+                                "source": source,
+                                "subquery_label": label,
+                                "native_rank": rank,
+                                "item_id": item.item_id,
+                            }
+                        ]
+                    },
                 )
                 continue
 
             candidate = candidates[key]
             candidate.rrf_score += score
+            previous_primary_score = (candidate.local_relevance * 100.0) + candidate.freshness + (candidate.source_quality * 10.0)
+            incoming_primary_score = (item_local_relevance * 100.0) + item_freshness + (item_source_quality * 10.0)
             candidate.local_relevance = max(
                 candidate.local_relevance,
-                float(item.metadata.get("local_relevance", item.relevance_hint)),
+                item_local_relevance,
             )
-            candidate.freshness = max(candidate.freshness, int(item.metadata.get("freshness", 0)))
+            candidate.freshness = max(candidate.freshness, item_freshness)
             if candidate.engagement is None:
                 candidate.engagement = item.metadata.get("engagement_score")
             elif item.metadata.get("engagement_score") is not None:
                 candidate.engagement = max(candidate.engagement, item.metadata["engagement_score"])
             candidate.source_quality = max(
                 candidate.source_quality,
-                float(item.metadata.get("source_quality", 0.6)),
+                item_source_quality,
             )
             candidate.native_ranks[f"{label}:{source}"] = rank
             if label not in candidate.subquery_labels:
                 candidate.subquery_labels.append(label)
+            if item.source not in candidate.sources:
+                candidate.sources.append(item.source)
+            if not any(existing.source == item.source and existing.item_id == item.item_id for existing in candidate.source_items):
+                candidate.source_items.append(item)
+            candidate.metadata.setdefault("provenance", []).append(
+                {
+                    "source": source,
+                    "subquery_label": label,
+                    "native_rank": rank,
+                    "item_id": item.item_id,
+                }
+            )
+            if incoming_primary_score > previous_primary_score:
+                candidate.item_id = item.item_id
+                candidate.source = item.source
+                candidate.title = item.title
+                candidate.snippet = item.snippet
             if len(candidate.snippet.split()) < len(item.snippet.split()):
                 candidate.snippet = item.snippet
 
@@ -75,7 +108,7 @@ def weighted_rrf(
             -candidate.rrf_score,
             -candidate.local_relevance,
             -candidate.freshness,
-            candidate.source,
+            schema.candidate_source_label(candidate),
             candidate.title,
         ),
     )

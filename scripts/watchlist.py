@@ -126,7 +126,7 @@ def _run_topic(topic: dict) -> dict:
                 "duration": duration,
             }
 
-        report = schema.Report.from_dict(json.loads(result.stdout))
+        report = schema.report_from_dict(json.loads(result.stdout))
         findings = [_candidate_to_finding(candidate) for candidate in report.ranked_candidates[:25]]
         counts = store.store_findings(run_id, topic_id, findings)
         store.update_run(
@@ -164,11 +164,11 @@ def _run_topic(topic: dict) -> dict:
 
 
 def _candidate_to_finding(candidate: schema.Candidate) -> dict:
-    item = candidate.metadata.get("item") or {}
-    body = item.get("body") or candidate.snippet or candidate.title
-    author = item.get("author") or ""
+    item = schema.candidate_primary_item(candidate)
+    body = item.body if item and item.body else candidate.snippet or candidate.title
+    author = item.author if item and item.author else ""
     return {
-        "source": candidate.source,
+        "source": schema.candidate_source_label(candidate),
         "source_url": candidate.url,
         "source_title": candidate.title,
         "author": author,

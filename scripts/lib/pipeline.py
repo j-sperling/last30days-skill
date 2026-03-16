@@ -35,7 +35,7 @@ from .cluster import cluster_candidates
 from .fusion import weighted_rrf
 
 DEPTH_SETTINGS = {
-    "quick": {"per_stream_limit": 8, "pool_limit": 25, "rerank_limit": 25},
+    "quick": {"per_stream_limit": 6, "pool_limit": 15, "rerank_limit": 12},
     "default": {"per_stream_limit": 12, "pool_limit": 40, "rerank_limit": 40},
     "deep": {"per_stream_limit": 20, "pool_limit": 60, "rerank_limit": 60},
 }
@@ -47,6 +47,20 @@ SEARCH_ALIAS = {
     "web": "grounding",
     "xhs": "xiaohongshu",
 }
+
+MOCK_AVAILABLE_SOURCES = [
+    "reddit",
+    "x",
+    "youtube",
+    "tiktok",
+    "instagram",
+    "hackernews",
+    "bluesky",
+    "truthsocial",
+    "polymarket",
+    "grounding",
+    "xiaohongshu",
+]
 
 
 def normalize_requested_sources(sources: list[str] | None) -> list[str] | None:
@@ -108,11 +122,17 @@ def run(
     requested_sources = normalize_requested_sources(requested_sources)
     from_date, to_date = dates.get_date_range(30)
 
-    runtime, reasoning_provider = providers.resolve_runtime(config, depth)
-    grounding_provider = _grounding_provider(config, reasoning_provider)
-    available = available_sources(config, requested_sources)
-    if requested_sources:
-        available = [source for source in available if source in requested_sources]
+    if mock:
+        runtime = providers.mock_runtime(config, depth)
+        reasoning_provider = None
+        grounding_provider = None
+        available = list(requested_sources or MOCK_AVAILABLE_SOURCES)
+    else:
+        runtime, reasoning_provider = providers.resolve_runtime(config, depth)
+        grounding_provider = _grounding_provider(config, reasoning_provider)
+        available = available_sources(config, requested_sources)
+        if requested_sources:
+            available = [source for source in available if source in requested_sources]
     if not available:
         raise RuntimeError("No sources are available for this run.")
 
@@ -125,10 +145,7 @@ def run(
         model=None if mock else runtime.planner_model,
     )
 
-    streams: dict[tuple[str, str], list[schema.SourceItem]] = {}
-    items_by_source_raw: dict[str, list[schema.SourceItem]] = {}
-    errors_by_source: dict[str, str] = {}
-    artifacts: dict[str, Any] = {"grounding": []}
+    bundle = schema.RetrievalBundle(artifacts={"grounding": []})
 
     futures = {}
     with ThreadPoolExecutor(max_workers=max(4, len(plan.subqueries) * 3)) as executor:
@@ -161,15 +178,15 @@ def run(
                 for item in normalized:
                     item.snippet = snippet.extract_best_snippet(item, subquery.ranking_query)
                 normalized = normalized[: settings["per_stream_limit"]]
-                streams[(subquery.label, source)] = normalized
-                items_by_source_raw.setdefault(source, []).extend(normalized)
+                bundle.items_by_source_and_query[(subquery.label, source)] = normalized
+                bundle.items_by_source.setdefault(source, []).extend(normalized)
                 if artifact:
-                    artifacts.setdefault("grounding", []).append(artifact)
+                    bundle.artifacts.setdefault("grounding", []).append(artifact)
             except Exception as exc:
-                errors_by_source[source] = str(exc)
+                bundle.errors_by_source[source] = str(exc)
 
-    items_by_source = _finalize_items_by_source(items_by_source_raw)
-    candidates = weighted_rrf(streams, plan, pool_limit=settings["pool_limit"])
+    items_by_source = _finalize_items_by_source(bundle.items_by_source)
+    candidates = weighted_rrf(bundle.items_by_source_and_query, plan, pool_limit=settings["pool_limit"])
     ranked_candidates = rerank.rerank_candidates(
         topic=topic,
         plan=plan,
@@ -179,7 +196,7 @@ def run(
         shortlist_size=settings["rerank_limit"],
     )
     clusters = cluster_candidates(ranked_candidates, plan)
-    warnings = _warnings(items_by_source, ranked_candidates, errors_by_source)
+    warnings = _warnings(items_by_source, ranked_candidates, bundle.errors_by_source)
 
     return schema.Report(
         topic=topic,
@@ -191,9 +208,9 @@ def run(
         clusters=clusters,
         ranked_candidates=ranked_candidates,
         items_by_source=items_by_source,
-        errors_by_source=errors_by_source,
+        errors_by_source=bundle.errors_by_source,
         warnings=warnings,
-        artifacts=artifacts,
+        artifacts=bundle.artifacts,
     )
 
 
@@ -215,7 +232,12 @@ def _warnings(
         warnings.append("No candidates survived retrieval and ranking.")
     if len(candidates) < 5:
         warnings.append("Evidence is thin for this topic.")
-    if len({candidate.source for candidate in candidates[:5]}) <= 1 and len(candidates) >= 3:
+    top_sources = {
+        source
+        for candidate in candidates[:5]
+        for source in schema.candidate_sources(candidate)
+    }
+    if len(top_sources) <= 1 and len(candidates) >= 3:
         warnings.append("Top evidence is highly concentrated in one source.")
     if errors_by_source:
         warnings.append(f"Some sources failed: {', '.join(sorted(errors_by_source))}")
@@ -375,4 +397,13 @@ def _mock_stream_results(source: str, subquery: schema.SubQuery) -> tuple[list[d
             }
         ],
     }
-    return payloads.get(source, []), {"label": subquery.label, "mock": True} if source == "grounding" else {}
+    if source == "grounding":
+        return payloads.get(source, []), {
+            "label": subquery.label,
+            "mock": True,
+            "answerText": f"Mock grounded answer for {subquery.search_query}.",
+            "webSearchQueries": [subquery.search_query],
+            "groundingChunks": [],
+            "groundingSupports": [],
+        }
+    return payloads.get(source, []), {}

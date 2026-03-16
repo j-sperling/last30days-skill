@@ -43,14 +43,18 @@ def _has_injected_credentials() -> bool:
     return bool(_credentials.get('AUTH_TOKEN') and _credentials.get('CT0'))
 
 
+def _has_process_credentials() -> bool:
+    """Return True when AUTH_TOKEN/CT0 are present in process env."""
+    return bool(os.environ.get("AUTH_TOKEN") and os.environ.get("CT0"))
+
+
 def _subprocess_env() -> Dict[str, str]:
     """Build env dict for Node subprocesses, merging injected credentials."""
     env = os.environ.copy()
     env.update(_credentials)
-    # When repo config already provides cookies, disable browser-cookie fallback
-    # so vendored Bird never hits Safari/Chrome keychain during automation.
-    if _has_injected_credentials():
-        env.setdefault("BIRD_DISABLE_BROWSER_COOKIES", "1")
+    # Hard-disable browser-cookie fallback so normal pipeline runs never hit
+    # Safari/Chrome Keychain prompts during source detection or search.
+    env["BIRD_DISABLE_BROWSER_COOKIES"] = "1"
     return env
 
 
@@ -83,7 +87,7 @@ def is_bird_installed() -> bool:
 
 
 def is_bird_authenticated() -> Optional[str]:
-    """Check if X credentials are available (env vars or browser cookies).
+    """Check if explicit X credentials are available.
 
     Returns:
         Auth source string if authenticated, None otherwise.
@@ -93,20 +97,9 @@ def is_bird_authenticated() -> Optional[str]:
 
     if _has_injected_credentials():
         return "env AUTH_TOKEN"
-
-    try:
-        result = subprocess.run(
-            ["node", str(_BIRD_SEARCH_MJS), "--whoami"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            env=_subprocess_env(),
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip().split('\n')[0]
-        return None
-    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
-        return None
+    if _has_process_credentials():
+        return "env AUTH_TOKEN"
+    return None
 
 
 def check_npm_available() -> bool:

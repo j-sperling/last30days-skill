@@ -33,6 +33,7 @@ class SchemaV3Tests(unittest.TestCase):
                 candidate_id="c1",
                 item_id="i1",
                 source="grounding",
+                sources=["grounding", "reddit"],
                 title="Title",
                 url="https://example.com",
                 snippet="Snippet",
@@ -45,17 +46,20 @@ class SchemaV3Tests(unittest.TestCase):
                 rrf_score=0.02,
                 rerank_score=91,
                 final_score=90,
-                metadata={"item": {"published_at": "2026-03-16"}},
+                source_items=[
+                    schema.SourceItem(item_id="i1", source="grounding", title="Title", body="Body", url="https://example.com", published_at="2026-03-16")
+                ],
             )],
             items_by_source={"grounding": [schema.SourceItem(item_id="i1", source="grounding", title="Title", body="Body", url="https://example.com")]},
             errors_by_source={},
             warnings=["warning"],
             artifacts={"grounding": []},
         )
-        restored = schema.Report.from_dict(report.to_dict())
+        restored = schema.report_from_dict(schema.to_dict(report))
         self.assertEqual(report.topic, restored.topic)
         self.assertEqual(report.provider_runtime.planner_model, restored.provider_runtime.planner_model)
         self.assertEqual(report.ranked_candidates[0].candidate_id, restored.ranked_candidates[0].candidate_id)
+        self.assertEqual(report.ranked_candidates[0].sources, restored.ranked_candidates[0].sources)
         self.assertEqual(report.items_by_source["grounding"][0].title, restored.items_by_source["grounding"][0].title)
 
 

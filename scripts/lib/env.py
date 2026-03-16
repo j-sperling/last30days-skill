@@ -306,32 +306,39 @@ def get_reddit_source(config: Dict[str, Any]) -> Optional[str]:
 
 
 def get_x_source(config: Dict[str, Any]) -> Optional[str]:
-    """Determine the best available X/Twitter source.
+    """Determine the best available explicit X/Twitter source.
 
-    Priority: Bird (free) → xAI (paid API)
+    Priority: explicit backend pin, then xAI, then Bird with explicit cookies.
 
-    Keep X selection limited to documented, verified search backends.
+    Browser-cookie probing is intentionally not used here. Automatic Keychain
+    access causes popups during normal pipeline runs. Bird is only considered
+    available when AUTH_TOKEN and CT0 are present explicitly.
 
     Args:
         config: Configuration dict from get_config()
 
     Returns:
-        'bird' if Bird is installed and authenticated,
+        'bird' if Bird is installed and explicit cookies are configured,
         'xai' if XAI_API_KEY is configured,
         None if no X source available.
     """
     # Import here to avoid circular dependency
     from . import bird_x
 
-    # Check Bird first (free option)
-    if bird_x.is_bird_installed():
-        username = bird_x.is_bird_authenticated()
-        if username:
-            return 'bird'
+    preferred = (config.get('LAST30DAYS_X_BACKEND') or '').lower()
+    has_bird_creds = bool(config.get('AUTH_TOKEN') and config.get('CT0'))
+    if has_bird_creds:
+        bird_x.set_credentials(config.get('AUTH_TOKEN'), config.get('CT0'))
 
-    # Fall back to xAI if key exists
+    if preferred == 'xai':
+        return 'xai' if config.get('XAI_API_KEY') else None
+    if preferred == 'bird':
+        return 'bird' if has_bird_creds and bird_x.is_bird_installed() else None
+
     if config.get('XAI_API_KEY'):
         return 'xai'
+    if has_bird_creds and bird_x.is_bird_installed():
+        return 'bird'
 
     return None
 

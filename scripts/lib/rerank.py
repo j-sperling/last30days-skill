@@ -49,10 +49,10 @@ def _build_prompt(topic: str, plan: schema.QueryPlan, candidates: list[schema.Ca
         "\n".join(
             [
                 f"- candidate_id: {candidate.candidate_id}",
-                f"  source: {candidate.source}",
+                f"  sources: {schema.candidate_source_label(candidate)}",
                 f"  title: {candidate.title[:220]}",
                 f"  snippet: {candidate.snippet[:420]}",
-                f"  date: {candidate.metadata.get('item', {}).get('published_at') or 'unknown'}",
+                f"  date: {schema.candidate_best_published_at(candidate) or 'unknown'}",
                 f"  matched_subqueries: {', '.join(candidate.subquery_labels)}",
             ]
         )

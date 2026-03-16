@@ -90,7 +90,7 @@ def save_output(report: schema.Report, emit: str, save_dir: str) -> Path:
 
 def emit_output(report: schema.Report, emit: str) -> str:
     if emit == "json":
-        return json.dumps(report.to_dict(), indent=2, sort_keys=True)
+        return json.dumps(schema.to_dict(report), indent=2, sort_keys=True)
     if emit in {"compact", "md"}:
         return render.render_compact(report)
     if emit == "context":

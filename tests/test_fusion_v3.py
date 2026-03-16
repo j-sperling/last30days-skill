@@ -49,6 +49,8 @@ class FusionV3Tests(unittest.TestCase):
         merged = next(candidate for candidate in candidates if candidate.url == shared)
         self.assertEqual({"primary"}, set(merged.subquery_labels))
         self.assertEqual(2, len(merged.native_ranks))
+        self.assertEqual({"reddit", "x"}, set(merged.sources))
+        self.assertEqual(2, len(merged.source_items))
 
 
 if __name__ == "__main__":

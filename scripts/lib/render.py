@@ -68,7 +68,7 @@ def render_context(report: schema.Report, cluster_limit: int = 6) -> str:
             if not candidate:
                 continue
             lines.append(
-                f"  - {candidate.source}: {candidate.title} | {candidate.url} | {candidate.snippet[:180]}"
+                f"  - {schema.candidate_source_label(candidate)}: {candidate.title} | {candidate.url} | {candidate.snippet[:180]}"
             )
     if report.warnings:
         lines.append("Warnings:")
@@ -78,7 +78,7 @@ def render_context(report: schema.Report, cluster_limit: int = 6) -> str:
 
 def _render_candidate(candidate: schema.Candidate, prefix: str) -> list[str]:
     lines = [
-        f"{prefix} [{candidate.source}] {candidate.title}",
+        f"{prefix} [{schema.candidate_source_label(candidate)}] {candidate.title}",
         f"   - URL: {candidate.url}",
         f"   - Score: {candidate.final_score:.1f} | rerank={candidate.rerank_score or 0:.1f} | rrf={candidate.rrf_score:.4f}",
     ]

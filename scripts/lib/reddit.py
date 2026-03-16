@@ -10,6 +10,7 @@ API docs: https://scrapecreators.com/docs
 import re
 import sys
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
@@ -26,8 +27,8 @@ SCRAPECREATORS_BASE = "https://api.scrapecreators.com/v1/reddit"
 DEPTH_CONFIG = {
     "quick": {
         "global_searches": 1,
-        "subreddit_searches": 2,
-        "comment_enrichments": 3,
+        "subreddit_searches": 0,
+        "comment_enrichments": 0,
         "timeframe": "week",
     },
     "default": {
@@ -449,12 +450,17 @@ def search_reddit(
     all_raw_posts = []
     max_global = config["global_searches"]
 
-    for i, query in enumerate(queries[:max_global]):
-        sort = "relevance" if i == 0 else "top"
-        _log(f"Global search {i+1}/{max_global}: '{query}' (sort={sort})")
-        posts = _global_search(query, token, sort=sort, timeframe=timeframe)
-        _log(f"  -> {len(posts)} results")
-        all_raw_posts.extend(posts)
+    with ThreadPoolExecutor(max_workers=max_global or 1) as executor:
+        futures = {}
+        for i, query in enumerate(queries[:max_global]):
+            sort = "relevance" if i == 0 else "top"
+            _log(f"Global search {i+1}/{max_global}: '{query}' (sort={sort})")
+            futures[executor.submit(_global_search, query, token, sort, timeframe)] = query
+        for future in as_completed(futures):
+            query = futures[future]
+            posts = future.result()
+            _log(f"  -> {len(posts)} results for '{query}'")
+            all_raw_posts.extend(posts)
 
     # Normalize all posts (with query for relevance scoring)
     core = _extract_core_subject(topic)
@@ -467,13 +473,20 @@ def search_reddit(
     discovered_subs = discover_subreddits(all_raw_posts, topic=topic, max_subs=config["subreddit_searches"])
     _log(f"Discovered subreddits: {discovered_subs}")
 
-    for sub in discovered_subs[:config["subreddit_searches"]]:
-        _log(f"Subreddit search: r/{sub} for '{core}'")
-        sub_posts = _subreddit_search(sub, core, token, sort="relevance", timeframe=timeframe)
-        _log(f"  -> {len(sub_posts)} results from r/{sub}")
-        for j, post in enumerate(sub_posts):
-            item = _normalize_post(post, len(all_items) + j + 1, f"r/{sub}", query=core)
-            all_items.append(item)
+    subreddit_limit = config["subreddit_searches"]
+    if subreddit_limit > 0:
+        with ThreadPoolExecutor(max_workers=subreddit_limit) as executor:
+            futures = {}
+            for sub in discovered_subs[:subreddit_limit]:
+                _log(f"Subreddit search: r/{sub} for '{core}'")
+                futures[executor.submit(_subreddit_search, sub, core, token, "relevance", timeframe)] = sub
+            for future in as_completed(futures):
+                sub = futures[future]
+                sub_posts = future.result()
+                _log(f"  -> {len(sub_posts)} results from r/{sub}")
+                for j, post in enumerate(sub_posts):
+                    item = _normalize_post(post, len(all_items) + j + 1, f"r/{sub}", query=core)
+                    all_items.append(item)
 
     # === Phase 4: Deduplicate ===
     all_items = _dedupe_posts(all_items)
@@ -529,62 +542,60 @@ def enrich_with_comments(
     config = DEPTH_CONFIG.get(depth, DEPTH_CONFIG["default"])
     max_comments = config["comment_enrichments"]
 
-    if not items or not token:
+    if not items or not token or max_comments <= 0:
         return items
 
     top_items = items[:max_comments]
     _log(f"Enriching comments for {len(top_items)} posts")
 
-    for item in top_items:
-        url = item.get("url", "")
-        if not url:
-            continue
-
-        raw_comments = fetch_post_comments(url, token)
-        if not raw_comments:
-            continue
-
-        # Parse comments into our format
-        top_comments = []
-        insights = []
-
-        for ci, c in enumerate(raw_comments[:10]):  # Take top 10 comments
-            body = c.get("body", "")
-            if not body or body in ("[deleted]", "[removed]"):
+    with ThreadPoolExecutor(max_workers=min(4, len(top_items))) as executor:
+        futures = {
+            executor.submit(fetch_post_comments, item.get("url", ""), token): item
+            for item in top_items
+            if item.get("url")
+        }
+        for future in as_completed(futures):
+            item = futures[future]
+            raw_comments = future.result()
+            if not raw_comments:
                 continue
 
-            score = c.get("ups") or c.get("score", 0)
-            author = c.get("author", "[deleted]")
-            permalink = c.get("permalink", "")
-            comment_url = f"https://reddit.com{permalink}" if permalink else ""
+            top_comments = []
+            insights = []
 
-            # Top comment gets more room (400 chars) — funny/clever comments need it
-            max_excerpt = 400 if ci == 0 else 300
-            top_comments.append({
-                "score": score,
-                "date": _parse_date(c.get("created_utc")),
-                "author": author,
-                "excerpt": body[:max_excerpt],
-                "url": comment_url,
-            })
+            for ci, c in enumerate(raw_comments[:10]):
+                body = c.get("body", "")
+                if not body or body in ("[deleted]", "[removed]"):
+                    continue
 
-            # Extract insights from substantive comments
-            if len(body) >= 30 and author not in ("[deleted]", "[removed]", "AutoModerator"):
-                insight = body[:150]
-                if len(body) > 150:
-                    for i, char in enumerate(insight):
-                        if char in '.!?' and i > 50:
-                            insight = insight[:i+1]
-                            break
-                    else:
-                        insight = insight.rstrip() + "..."
-                insights.append(insight)
+                score = c.get("ups") or c.get("score", 0)
+                author = c.get("author", "[deleted]")
+                permalink = c.get("permalink", "")
+                comment_url = f"https://reddit.com{permalink}" if permalink else ""
 
-        # Sort comments by score
-        top_comments.sort(key=lambda c: c.get("score", 0), reverse=True)
+                max_excerpt = 400 if ci == 0 else 300
+                top_comments.append({
+                    "score": score,
+                    "date": _parse_date(c.get("created_utc")),
+                    "author": author,
+                    "excerpt": body[:max_excerpt],
+                    "url": comment_url,
+                })
 
-        item["top_comments"] = top_comments[:10]
-        item["comment_insights"] = insights[:10]
+                if len(body) >= 30 and author not in ("[deleted]", "[removed]", "AutoModerator"):
+                    insight = body[:150]
+                    if len(body) > 150:
+                        for i, char in enumerate(insight):
+                            if char in '.!?' and i > 50:
+                                insight = insight[:i+1]
+                                break
+                        else:
+                            insight = insight.rstrip() + "..."
+                    insights.append(insight)
+
+            top_comments.sort(key=lambda c: c.get("score", 0), reverse=True)
+            item["top_comments"] = top_comments[:10]
+            item["comment_insights"] = insights[:10]
 
     return items
 

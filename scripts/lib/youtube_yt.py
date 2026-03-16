@@ -21,13 +21,13 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Depth configurations: how many videos to search / transcribe
 DEPTH_CONFIG = {
-    "quick": 10,
+    "quick": 6,
     "default": 20,
     "deep": 40,
 }
 
 TRANSCRIPT_LIMITS = {
-    "quick": 3,
+    "quick": 0,
     "default": 5,
     "deep": 8,
 }
@@ -342,8 +342,10 @@ def search_and_transcribe(
 
     # Step 2: Fetch transcripts for top N by views
     transcript_limit = TRANSCRIPT_LIMITS.get(depth, TRANSCRIPT_LIMITS["default"])
-    top_ids = [item["video_id"] for item in items[:transcript_limit]]
-    transcripts = fetch_transcripts_parallel(top_ids)
+    transcripts: Dict[str, Optional[str]] = {}
+    if transcript_limit > 0:
+        top_ids = [item["video_id"] for item in items[:transcript_limit]]
+        transcripts = fetch_transcripts_parallel(top_ids)
 
     # Step 3: Attach transcripts to items
     for item in items:

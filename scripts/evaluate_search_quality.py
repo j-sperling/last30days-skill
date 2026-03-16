@@ -355,6 +355,37 @@ def write_summary(output_dir: Path, baseline_label: str, candidate_label: str, s
     (output_dir / "summary.md").write_text("\n".join(lines) + "\n")
 
 
+def write_failure_summary(
+    output_dir: Path,
+    baseline_label: str,
+    candidate_label: str,
+    summaries: list[dict[str, Any]],
+    failures: list[dict[str, Any]],
+) -> None:
+    write_summary(output_dir, baseline_label, candidate_label, summaries)
+    metrics_path = output_dir / "metrics.json"
+    payload = json.loads(metrics_path.read_text()) if metrics_path.exists() else {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "baseline": baseline_label,
+        "candidate": candidate_label,
+        "topics": [],
+    }
+    payload["failures"] = failures
+    metrics_path.write_text(json.dumps(payload, indent=2))
+
+    summary_path = output_dir / "summary.md"
+    lines = summary_path.read_text().splitlines() if summary_path.exists() else ["# Search Quality Evaluation", ""]
+    if failures:
+        lines.extend([
+            "",
+            "## Failures",
+            "",
+        ])
+        for failure in failures:
+            lines.append(f"- `{failure['topic']}`: {failure['error']}")
+    summary_path.write_text("\n".join(lines).rstrip() + "\n")
+
+
 def parse_topics_file(path: Path) -> list[tuple[str, str]]:
     rows = json.loads(path.read_text())
     return [(str(row["topic"]), str(row.get("query_type") or "general")) for row in rows]
@@ -387,48 +418,53 @@ def main() -> int:
     candidate_dir = REPO_ROOT if args.candidate == "HEAD" else create_worktree(args.candidate)
     try:
         summaries = []
+        failures = []
         for topic, query_type in topics:
-            baseline_report = run_last30days(
-                baseline_dir,
-                topic,
-                search=args.search,
-                timeout_seconds=args.timeout,
-                quick=args.quick,
-                mock=args.mock,
-                env=run_env,
-            )
-            candidate_report = run_last30days(
-                candidate_dir,
-                topic,
-                search=args.search,
-                timeout_seconds=args.timeout,
-                quick=args.quick,
-                mock=args.mock,
-                env=run_env,
-            )
-            judged_pool_map = {
-                item["key"]: item
-                for item in build_ranked_items(baseline_report, args.limit) + build_ranked_items(candidate_report, args.limit)
-            }
-            judged_pool = list(judged_pool_map.values())
-            judgments = get_judgments(
-                output_dir=output_dir,
-                slug="".join(char.lower() if char.isalnum() else "-" for char in topic).strip("-"),
-                topic=topic,
-                query_type=query_type,
-                items=judged_pool,
-                judge_model=args.judge_model,
-                gemini_api_key=gemini_api_key,
-            )
-            summaries.append(summarize_topic(topic, query_type, baseline_report, candidate_report, judgments, judged_pool, args.limit))
-        write_summary(output_dir, args.baseline, args.candidate, summaries)
+            try:
+                baseline_report = run_last30days(
+                    baseline_dir,
+                    topic,
+                    search=args.search,
+                    timeout_seconds=args.timeout,
+                    quick=args.quick,
+                    mock=args.mock,
+                    env=run_env,
+                )
+                candidate_report = run_last30days(
+                    candidate_dir,
+                    topic,
+                    search=args.search,
+                    timeout_seconds=args.timeout,
+                    quick=args.quick,
+                    mock=args.mock,
+                    env=run_env,
+                )
+                judged_pool_map = {
+                    item["key"]: item
+                    for item in build_ranked_items(baseline_report, args.limit) + build_ranked_items(candidate_report, args.limit)
+                }
+                judged_pool = list(judged_pool_map.values())
+                judgments = get_judgments(
+                    output_dir=output_dir,
+                    slug="".join(char.lower() if char.isalnum() else "-" for char in topic).strip("-"),
+                    topic=topic,
+                    query_type=query_type,
+                    items=judged_pool,
+                    judge_model=args.judge_model,
+                    gemini_api_key=gemini_api_key,
+                )
+                summaries.append(summarize_topic(topic, query_type, baseline_report, candidate_report, judgments, judged_pool, args.limit))
+            except Exception as exc:
+                failures.append({"topic": topic, "query_type": query_type, "error": str(exc)})
+        write_failure_summary(output_dir, args.baseline, args.candidate, summaries, failures)
     finally:
         if baseline_dir != REPO_ROOT:
             remove_worktree(baseline_dir)
         if candidate_dir != REPO_ROOT:
             remove_worktree(candidate_dir)
-    print(json.dumps({"output_dir": str(output_dir), "topics": len(topics)}, indent=2))
-    return 0
+    result = {"output_dir": str(output_dir), "topics": len(topics), "failures": len(failures)}
+    print(json.dumps(result, indent=2))
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

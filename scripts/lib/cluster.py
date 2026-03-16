@@ -54,7 +54,7 @@ def cluster_candidates(
                     title=candidate.title,
                     candidate_ids=[candidate.candidate_id],
                     representative_ids=[candidate.candidate_id],
-                    sources=[candidate.source],
+                    sources=sorted(schema.candidate_sources(candidate)),
                     score=candidate.final_score,
                     uncertainty=None,
                 )
@@ -88,7 +88,7 @@ def cluster_candidates(
                 title=group[0].title,
                 candidate_ids=[candidate.candidate_id for candidate in group],
                 representative_ids=representatives,
-                sources=sorted({candidate.source for candidate in group}),
+                sources=sorted({source for candidate in group for source in schema.candidate_sources(candidate)}),
                 score=max(candidate.final_score for candidate in group),
                 uncertainty=_cluster_uncertainty(group),
             )
@@ -98,9 +98,7 @@ def cluster_candidates(
 
 
 def _cluster_uncertainty(group: list[schema.Candidate]) -> str | None:
-    if len(group) == 1:
-        return "single-source"
-    sources = {candidate.source for candidate in group}
+    sources = {source for candidate in group for source in schema.candidate_sources(candidate)}
     if len(sources) == 1:
         return "single-source"
     if max(candidate.final_score for candidate in group) < 55:
