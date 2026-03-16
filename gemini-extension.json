@@ -1,65 +1,89 @@
 {
   "name": "last30days-skill",
-  "version": "2.9.5",
-  "description": "Research a topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, and the web.",
+  "version": "3.0.0",
+  "description": "Cluster-first last-30-days research across social, market, and grounded web sources, powered by Gemini 3.1 preview.",
   "settings": [
     {
-      "name": "Extension Directory",
-      "description": "Extension installation directory (auto-set by Gemini CLI)",
-      "envVar": "GEMINI_EXTENSION_DIR",
-      "sensitive": false
+      "name": "Google API Key",
+      "description": "Required for Gemini 3.1 preview planning, reranking, and Google Search grounding",
+      "envVar": "GOOGLE_API_KEY",
+      "sensitive": true
     },
     {
       "name": "ScrapeCreators API Key",
-      "description": "ScrapeCreators API Key for Reddit, TikTok, and Instagram search (required)",
+      "description": "Optional. Enables Reddit, TikTok, and Instagram retrieval",
       "envVar": "SCRAPECREATORS_API_KEY",
       "sensitive": true
     },
     {
       "name": "OpenAI API Key",
-      "description": "OpenAI API Key - optional fallback for Reddit discovery",
+      "description": "Optional fallback reasoning provider",
       "envVar": "OPENAI_API_KEY",
       "sensitive": true
     },
     {
       "name": "xAI API Key",
-      "description": "xAI API Key for X/Twitter search (optional)",
+      "description": "Optional xAI reasoning provider and X search backend",
       "envVar": "XAI_API_KEY",
       "sensitive": true
     },
     {
-      "name": "OpenRouter API Key",
-      "description": "OpenRouter API Key (optional)",
-      "envVar": "OPENROUTER_API_KEY",
+      "name": "Reasoning Provider",
+      "description": "Optional. One of auto, gemini, openai, or xai",
+      "envVar": "LAST30DAYS_REASONING_PROVIDER",
+      "sensitive": false
+    },
+    {
+      "name": "Planner Model",
+      "description": "Optional. Must remain a Gemini 3.1 preview model when using Gemini",
+      "envVar": "LAST30DAYS_PLANNER_MODEL",
+      "sensitive": false
+    },
+    {
+      "name": "Rerank Model",
+      "description": "Optional. Must remain a Gemini 3.1 preview model when using Gemini",
+      "envVar": "LAST30DAYS_RERANK_MODEL",
+      "sensitive": false
+    },
+    {
+      "name": "Grounding Model",
+      "description": "Optional. Must remain a Gemini 3.1 preview model",
+      "envVar": "LAST30DAYS_GROUNDING_MODEL",
+      "sensitive": false
+    },
+    {
+      "name": "X Backend",
+      "description": "Optional. One of xai or bird",
+      "envVar": "LAST30DAYS_X_BACKEND",
+      "sensitive": false
+    },
+    {
+      "name": "Bluesky Handle",
+      "description": "Optional. Enables Bluesky search",
+      "envVar": "BSKY_HANDLE",
+      "sensitive": false
+    },
+    {
+      "name": "Bluesky App Password",
+      "description": "Optional. Pair with BSKY_HANDLE",
+      "envVar": "BSKY_APP_PASSWORD",
       "sensitive": true
     },
     {
-      "name": "Parallel AI API Key",
-      "description": "Parallel AI API Key (optional)",
-      "envVar": "PARALLEL_API_KEY",
-      "sensitive": true
-    },
-    {
-      "name": "Brave Search API Key",
-      "description": "Brave Search API Key (optional)",
-      "envVar": "BRAVE_API_KEY",
-      "sensitive": true
-    },
-    {
-      "name": "Apify API Token",
-      "description": "Apify API Token (optional legacy)",
-      "envVar": "APIFY_API_TOKEN",
+      "name": "Truth Social Token",
+      "description": "Optional. Enables Truth Social search",
+      "envVar": "TRUTHSOCIAL_TOKEN",
       "sensitive": true
     },
     {
       "name": "Twitter AUTH_TOKEN",
-      "description": "Twitter browser AUTH_TOKEN cookie for direct X search (optional)",
+      "description": "Optional Bird X cookie",
       "envVar": "AUTH_TOKEN",
       "sensitive": true
     },
     {
       "name": "Twitter CT0",
-      "description": "Twitter browser CT0 cookie (optional, pair with AUTH_TOKEN)",
+      "description": "Optional Bird X cookie, pair with AUTH_TOKEN",
       "envVar": "CT0",
       "sensitive": true
     }

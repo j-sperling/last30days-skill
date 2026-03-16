@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-03-16
+
+### Changed
+
+- hard-cut rewrite to a planner-driven retrieval pipeline
+- Gemini 3.1 preview now powers planning, reranking, and Google Search grounding
+- replaced generic web backends with `grounding.py`
+- replaced source-first ranking with weighted RRF, single-score reranking, and cluster-first output
+- removed legacy modules: cache, query typing, score policy, model discovery, old web backends, and deprecated source adapters
+
 ## [2.9.4] - 2026-03-06
 
 ### Changed
@@ -155,6 +165,7 @@ Three headline features: watchlists for always-on bots, YouTube transcripts as a
 
 Initial public release. Reddit + X search via OpenAI Responses API and xAI API.
 
+[3.0.0]: https://github.com/mvanhorn/last30days-skill/compare/v2.9.4...v3.0.0
 [2.9.1]: https://github.com/mvanhorn/last30days-skill/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/mvanhorn/last30days-skill/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/mvanhorn/last30days-skill/compare/v2.6.0...v2.8.0
