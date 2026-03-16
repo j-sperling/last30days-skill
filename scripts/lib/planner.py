@@ -23,9 +23,41 @@ QUICK_SOURCE_PRIORITY = {
     "concept": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
     "opinion": ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
     "how_to": ["grounding", "reddit", "youtube", "x", "hackernews", "polymarket"],
-    "comparison": ["grounding", "x", "reddit", "hackernews", "youtube", "polymarket"],
+    "comparison": ["reddit", "x", "grounding", "hackernews", "youtube", "polymarket"],
+    "breaking_news": ["grounding", "x", "reddit", "hackernews", "youtube", "polymarket"],
+    "prediction": ["polymarket", "x", "grounding", "reddit", "hackernews", "youtube"],
+}
+SOURCE_PRIORITY = {
+    "factual": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
+    "product": ["reddit", "grounding", "x", "youtube", "hackernews", "polymarket"],
+    "concept": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
+    "opinion": ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
+    "how_to": ["grounding", "youtube", "reddit", "x", "hackernews", "polymarket"],
+    "comparison": ["reddit", "x", "grounding", "hackernews", "youtube", "polymarket"],
     "breaking_news": ["grounding", "x", "reddit", "hackernews", "youtube", "polymarket"],
     "prediction": ["polymarket", "x", "grounding", "hackernews", "reddit", "youtube"],
+}
+SOURCE_LIMITS = {
+    "quick": {
+        "factual": 2,
+        "product": 2,
+        "concept": 2,
+        "opinion": 2,
+        "how_to": 2,
+        "comparison": 2,
+        "breaking_news": 2,
+        "prediction": 2,
+    },
+    "default": {
+        "factual": 2,
+        "product": 3,
+        "concept": 3,
+        "opinion": 3,
+        "how_to": 3,
+        "comparison": 3,
+        "breaking_news": 4,
+        "prediction": 3,
+    },
 }
 
 
@@ -157,7 +189,7 @@ def _sanitize_plan(
         freshness_mode=freshness_mode,
         cluster_mode=cluster_mode,
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries, intent, depth, list(source_weights))),
+        subqueries=_normalize_subquery_weights(_trim_subqueries_for_depth(subqueries, intent, depth, list(source_weights))),
         source_weights=source_weights,
         notes=[str(note).strip() for note in raw.get("notes") or [] if str(note).strip()],
     )
@@ -185,20 +217,34 @@ def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
     }
 
 
-def _trim_quick_subqueries(
+def _trim_subqueries_for_depth(
     subqueries: list[schema.SubQuery],
     intent: str,
     depth: str,
     available_sources: list[str],
 ) -> list[schema.SubQuery]:
-    if depth != "quick":
+    limits = SOURCE_LIMITS.get(depth)
+    if not limits:
         return subqueries
-    priority = QUICK_SOURCE_PRIORITY.get(intent, QUICK_SOURCE_PRIORITY["breaking_news"])
-    preferred_sources = [source for source in priority if source in available_sources][:2]
-    if not preferred_sources:
-        preferred_sources = available_sources[:2]
+    priority_table = QUICK_SOURCE_PRIORITY if depth == "quick" else SOURCE_PRIORITY
+    priority = priority_table.get(intent, priority_table["breaking_news"])
+    limit = limits.get(intent, 3)
+    ranked_sources = [source for source in priority if source in available_sources]
+    if not ranked_sources:
+        ranked_sources = list(available_sources)
     trimmed = []
     for subquery in subqueries:
+        if depth in {"quick", "default"}:
+            preferred_sources = ranked_sources[:limit]
+        else:
+            preferred_sources = [source for source in ranked_sources if source in subquery.sources][:limit]
+            if len(preferred_sources) < limit:
+                for source in ranked_sources:
+                    if source in preferred_sources:
+                        continue
+                    preferred_sources.append(source)
+                    if len(preferred_sources) >= limit:
+                        break
         trimmed.append(
             schema.SubQuery(
                 label=subquery.label,
@@ -271,7 +317,7 @@ def _fallback_plan(
         freshness_mode=_default_freshness(intent),
         cluster_mode=_default_cluster_mode(intent),
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(_trim_quick_subqueries(subqueries[:3], intent, depth, list(source_weights))),
+        subqueries=_normalize_subquery_weights(_trim_subqueries_for_depth(subqueries[:3], intent, depth, list(source_weights))),
         source_weights=_normalize_weights(source_weights),
         notes=["fallback-plan"],
     )
