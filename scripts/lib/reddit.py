@@ -1,11 +1,7 @@
-"""Reddit search via ScrapeCreators API for /last30days.
+"""Reddit search via ScrapeCreators API for the v3 pipeline.
 
 Uses ScrapeCreators REST API to search Reddit globally, discover relevant
 subreddits, run targeted subreddit searches, and fetch comment trees.
-
-Replaces openai_reddit.py as the primary Reddit search backend.
-Falls back to openai_reddit.py if SCRAPECREATORS_API_KEY is missing but
-OPENAI_API_KEY is present.
 
 Requires SCRAPECREATORS_API_KEY in config (same key as TikTok + Instagram).
 API docs: https://scrapecreators.com/docs
@@ -49,7 +45,6 @@ DEPTH_CONFIG = {
 }
 
 from .query import extract_core_subject as _query_extract
-from .query_type import detect_query_type
 from .relevance import token_overlap_relevance
 
 # Reddit-specific noise words (preserves original smaller set)
@@ -110,7 +105,7 @@ def expand_reddit_queries(topic: str, depth: str) -> List[str]:
 
     # Opinion/review variants help mostly for product and opinion queries.
     # They contaminate broader searches like predictions or breaking news.
-    qtype = detect_query_type(topic)
+    qtype = _infer_query_intent(topic)
     if depth in ("default", "deep") and qtype in ("product", "opinion"):
         queries.append(f"{core} worth it OR thoughts OR review")
 
@@ -119,6 +114,22 @@ def expand_reddit_queries(topic: str, depth: str) -> List[str]:
         queries.append(f"{core} issues OR problems OR bug OR broken")
 
     return queries
+
+
+def _infer_query_intent(topic: str) -> str:
+    """Tiny local fallback for Reddit query expansion only."""
+    text = topic.lower().strip()
+    if re.search(r"\b(vs|versus|compare|difference between)\b", text):
+        return "comparison"
+    if re.search(r"\b(how to|tutorial|guide|setup|step by step|deploy|install)\b", text):
+        return "how_to"
+    if re.search(r"\b(thoughts on|worth it|should i|opinion|review)\b", text):
+        return "opinion"
+    if re.search(r"\b(pricing|feature|features|best .* for)\b", text):
+        return "product"
+    if re.search(r"\b(predict|prediction|odds|forecast|chance)\b", text):
+        return "prediction"
+    return "breaking_news"
 
 
 # Known utility/meta subreddits that match queries but aren't discussion subs.
@@ -412,7 +423,7 @@ def search_reddit(
 ) -> Dict[str, Any]:
     """Full Reddit search: multi-query global discovery + subreddit drill-down.
 
-    This is the main entry point. Replaces openai_reddit.search_reddit().
+    This is the main v3 Reddit entry point.
 
     Args:
         topic: Search topic
@@ -612,6 +623,6 @@ def search_and_enrich(
 def parse_reddit_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Parse ScrapeCreators response to item list.
 
-    Compatibility shim matching openai_reddit.parse_reddit_response() signature.
+    Parse raw Reddit search output into the generic item shape.
     """
     return response.get("items", [])

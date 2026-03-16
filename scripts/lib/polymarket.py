@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus, urlencode
 
 from . import http
-from .query_type import detect_query_type
 from .relevance import LOW_SIGNAL_QUERY_TOKENS, token_overlap_relevance
 
 GAMMA_SEARCH_URL = "https://gamma-api.polymarket.com/public-search"
@@ -128,6 +127,14 @@ def _extract_domain_queries(topic: str, events: List[Dict]) -> List[str]:
     ][:2]
 
     return domain_queries
+
+
+def _infer_query_intent(topic: str) -> str:
+    """Tiny local fallback for Polymarket search tuning only."""
+    text = topic.lower().strip()
+    if re.search(r"\b(predict|prediction|odds|forecast|chance|probability|will .* win)\b", text):
+        return "prediction"
+    return "breaking_news"
 
 
 def _search_single_query(query: str, page: int = 1) -> Dict[str, Any]:
@@ -328,7 +335,7 @@ def _compute_text_similarity(topic: str, title: str, outcomes: List[str] = None)
     if core in title_lower:
         return 1.0
 
-    query_type = detect_query_type(topic)
+    query_type = _infer_query_intent(topic)
     title_score = token_overlap_relevance(core, title)
     best_score = title_score
 

@@ -246,14 +246,14 @@ def get_config() -> Dict[str, Any]:
         ('GOOGLE_API_KEY', None),
         ('GEMINI_API_KEY', None),
         ('GOOGLE_GENAI_API_KEY', None),
-        ('OPENROUTER_API_KEY', None),
-        ('PARALLEL_API_KEY', None),
-        ('BRAVE_API_KEY', None),
         ('XIAOHONGSHU_API_BASE', None),
-        ('GEMINI_MODEL', None),
-        ('OPENAI_MODEL_POLICY', 'auto'),
+        ('LAST30DAYS_REASONING_PROVIDER', 'auto'),
+        ('LAST30DAYS_PLANNER_MODEL', None),
+        ('LAST30DAYS_RERANK_MODEL', None),
+        ('LAST30DAYS_GROUNDING_MODEL', None),
+        ('LAST30DAYS_X_MODEL', None),
+        ('LAST30DAYS_X_BACKEND', None),
         ('OPENAI_MODEL_PIN', None),
-        ('XAI_MODEL_POLICY', 'latest'),
         ('XAI_MODEL_PIN', None),
         ('SCRAPECREATORS_API_KEY', None),
         ('APIFY_API_TOKEN', None),
@@ -290,152 +290,19 @@ def config_exists() -> bool:
 def is_reddit_available(config: Dict[str, Any]) -> bool:
     """Check if Reddit search is available.
 
-    Reddit can use either ScrapeCreators (preferred) or OpenAI.
+    v3 uses ScrapeCreators only.
     """
-    has_sc = bool(config.get('SCRAPECREATORS_API_KEY'))
-    has_openai = bool(config.get('OPENAI_API_KEY')) and config.get('OPENAI_AUTH_STATUS') == AUTH_STATUS_OK
-    return has_sc or has_openai
+    return bool(config.get('SCRAPECREATORS_API_KEY'))
 
 
 def get_reddit_source(config: Dict[str, Any]) -> Optional[str]:
     """Determine which Reddit backend to use.
 
-    Priority: ScrapeCreators (cheaper, faster) > OpenAI (legacy)
-
-    Returns: 'scrapecreators', 'openai', or None
+    Returns: 'scrapecreators' or None
     """
     if config.get('SCRAPECREATORS_API_KEY'):
         return 'scrapecreators'
-    if config.get('OPENAI_API_KEY') and config.get('OPENAI_AUTH_STATUS') == AUTH_STATUS_OK:
-        return 'openai'
     return None
-
-
-def get_available_sources(config: Dict[str, Any]) -> str:
-    """Determine which sources are available.
-
-    Returns: 'all', 'both', 'reddit', 'reddit-web', 'x', 'x-web', 'web', or 'none'
-    """
-    # Reddit is available via public JSON fallback even without OpenAI auth.
-    has_reddit = True
-    has_xai = bool(config.get('XAI_API_KEY'))
-    has_web = has_web_search_keys(config)
-
-    if has_reddit and has_xai:
-        return 'all' if has_web else 'both'
-    elif has_reddit:
-        return 'reddit-web' if has_web else 'reddit'
-    return 'web' if has_web else 'none'
-
-
-def has_web_search_keys(config: Dict[str, Any]) -> bool:
-    """Check if any web search API keys are configured."""
-    return bool(config.get('OPENROUTER_API_KEY') or config.get('PARALLEL_API_KEY') or config.get('BRAVE_API_KEY'))
-
-
-def get_web_search_source(config: Dict[str, Any]) -> Optional[str]:
-    """Determine the best available web search backend.
-
-    Priority: Parallel AI > Brave > OpenRouter/Sonar Pro
-
-    Returns: 'parallel', 'brave', 'openrouter', or None
-    """
-    if config.get('PARALLEL_API_KEY'):
-        return 'parallel'
-    if config.get('BRAVE_API_KEY'):
-        return 'brave'
-    if config.get('OPENROUTER_API_KEY'):
-        return 'openrouter'
-    return None
-
-
-def get_missing_keys(config: Dict[str, Any]) -> str:
-    """Determine which sources are missing (accounting for Bird).
-
-    Returns: 'all', 'both', 'reddit', 'x', 'web', or 'none'
-    """
-    has_reddit = True
-    has_xai = bool(config.get('XAI_API_KEY'))
-    has_web = has_web_search_keys(config)
-
-    # Check if Bird provides X access (import here to avoid circular dependency)
-    from . import bird_x
-    has_bird = bird_x.is_bird_installed() and bird_x.is_bird_authenticated()
-
-    has_x = has_xai or has_bird
-
-    if has_reddit and has_x and has_web:
-        return 'none'
-    elif has_reddit and has_x:
-        return 'web'  # Missing web search keys
-    elif has_reddit and has_web:
-        return 'x'  # Missing X source
-    elif has_reddit:
-        return 'x'  # Missing X source (and possibly web)
-    return 'all'
-
-
-def validate_sources(requested: str, available: str, include_web: bool = False) -> tuple[str, Optional[str]]:
-    """Validate requested sources against available keys.
-
-    Args:
-        requested: 'auto', 'reddit', 'x', 'both', or 'web'
-        available: Result from get_available_sources()
-        include_web: If True, add WebSearch to available sources
-
-    Returns:
-        Tuple of (effective_sources, error_message)
-    """
-    has_reddit = available in ('reddit', 'both', 'reddit-web', 'all')
-    has_x = available in ('x', 'both', 'x-web', 'all')
-    has_web = available in ('web', 'reddit-web', 'x-web', 'all')
-
-    if requested == 'auto':
-        if has_reddit and has_x:
-            base = 'both'
-        elif has_reddit:
-            base = 'reddit'
-        elif has_x:
-            base = 'x'
-        elif has_web:
-            base = 'web'
-        else:
-            return 'none', "No sources are available."
-
-        if include_web:
-            if base == 'both':
-                return 'all', None
-            if base == 'reddit':
-                return 'reddit-web', None
-            if base == 'x':
-                return 'x-web', None
-        return base, None
-
-    if requested == 'web':
-        return 'web', None
-
-    if requested == 'both':
-        if not (has_reddit and has_x):
-            return 'none', "Requested both sources but X source is missing."
-        if include_web:
-            return 'all', None
-        return 'both', None
-
-    if requested == 'reddit':
-        if not has_reddit:
-            return 'none', "Requested Reddit but only xAI key is available."
-        if include_web:
-            return 'reddit-web', None
-        return 'reddit', None
-
-    if requested == 'x':
-        if not has_x:
-            return 'none', "Requested X but no X source is available (need Bird auth or XAI_API_KEY)."
-        if include_web:
-            return 'x-web', None
-        return 'x', None
-
-    return requested, None
 
 
 def get_x_source(config: Dict[str, Any]) -> Optional[str]:
