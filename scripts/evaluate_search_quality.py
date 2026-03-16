@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).parent))
 
 from lib import env as envlib
+from lib import schema
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -38,15 +39,27 @@ def stable_item_key(item: dict[str, Any]) -> str:
     return str(item.get("candidate_id") or item.get("url") or item.get("title") or "")
 
 
+def row_sources(row: dict[str, Any]) -> list[str]:
+    candidate = schema.candidate_from_dict(row)
+    return schema.candidate_sources(candidate)
+
+
+def row_best_date(row: dict[str, Any]) -> str | None:
+    candidate = schema.candidate_from_dict(row)
+    return schema.candidate_best_published_at(candidate)
+
+
 def build_ranked_items(report: dict[str, Any], limit: int) -> list[dict[str, Any]]:
     ranked = []
     for row in (report.get("ranked_candidates") or [])[:limit]:
+        candidate_sources = row_sources(row)
         ranked.append({
             "key": stable_item_key(row),
-            "source": str(row.get("source") or ""),
+            "source": ", ".join(candidate_sources),
+            "sources": candidate_sources,
             "url": str(row.get("url") or ""),
             "text": str(row.get("title") or ""),
-            "date": ((row.get("metadata") or {}).get("item") or {}).get("published_at"),
+            "date": row_best_date(row),
             "score": float(row.get("final_score") or 0.0),
         })
     return ranked
@@ -55,7 +68,8 @@ def build_ranked_items(report: dict[str, Any], limit: int) -> list[dict[str, Any
 def source_sets(report: dict[str, Any], limit: int) -> dict[str, set[str]]:
     grouped: dict[str, set[str]] = {}
     for item in build_ranked_items(report, limit):
-        grouped.setdefault(item["source"], set()).add(item["key"])
+        for source in item["sources"]:
+            grouped.setdefault(source, set()).add(item["key"])
     return grouped
 
 
@@ -101,10 +115,20 @@ def ndcg_at_k(ranking: list[dict[str, Any]], judgments: dict[str, int], k: int, 
 
 
 def source_coverage_recall(ranking: list[dict[str, Any]], judged_pool: list[dict[str, Any]], judgments: dict[str, int]) -> float:
-    good_sources = {item["source"] for item in judged_pool if judgments.get(item["key"], 0) >= 2}
+    good_sources = {
+        source
+        for item in judged_pool
+        if judgments.get(item["key"], 0) >= 2
+        for source in item["sources"]
+    }
     if not good_sources:
         return 1.0
-    hit_sources = {item["source"] for item in ranking if judgments.get(item["key"], 0) >= 2}
+    hit_sources = {
+        source
+        for item in ranking
+        if judgments.get(item["key"], 0) >= 2
+        for source in item["sources"]
+    }
     return len(hit_sources & good_sources) / len(good_sources)
 
 

@@ -47,6 +47,24 @@ class GroundingV3Tests(unittest.TestCase):
         self.assertEqual("https://example.com/2026/03/10/story", normalized[0].url)
         self.assertEqual("2026-03-10", normalized[0].published_at)
 
+    def test_grounding_does_not_reuse_global_answer_date_for_other_chunks(self):
+        payload = {
+            "candidates": [
+                {
+                    "content": {"parts": [{"text": "Published: 2026-03-10. General summary text."}]},
+                    "groundingMetadata": {
+                        "groundingChunks": [
+                            {"web": {"uri": "https://example.com/no-date", "title": "Undated story"}},
+                        ],
+                        "groundingSupports": [],
+                    },
+                }
+            ]
+        }
+        items = grounding._items_from_grounding_payload(payload, "primary", ("2026-02-14", "2026-03-16"))
+        normalized = normalize.normalize_source_items("grounding", items, "2026-02-14", "2026-03-16")
+        self.assertEqual([], normalized)
+
 
 if __name__ == "__main__":
     unittest.main()

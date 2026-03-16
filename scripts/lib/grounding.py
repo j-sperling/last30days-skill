@@ -72,7 +72,6 @@ def _items_from_grounding_payload(
         published_at = _extract_grounding_date(
             web=web,
             support_texts=support_map.get(index, []),
-            answer_text=answer_text,
             from_date=from_date,
             to_date=to_date,
             url=url,
@@ -159,7 +158,6 @@ def _extract_grounding_date(
     *,
     web: dict,
     support_texts: list[str],
-    answer_text: str,
     from_date: str,
     to_date: str,
     url: str,
@@ -177,10 +175,6 @@ def _extract_grounding_date(
         value = _extract_labeled_date(text)
         if _in_range(value, from_date, to_date):
             return value
-
-    value = _extract_labeled_date(answer_text)
-    if _in_range(value, from_date, to_date):
-        return value
 
     return None
 

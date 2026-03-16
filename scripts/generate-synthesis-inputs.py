@@ -21,7 +21,7 @@ def main() -> int:
     print(f"Converting {len(files)} JSON files to compact markdown...\n")
     for json_file in files:
         payload = json.loads(json_file.read_text())
-        report = schema.Report.from_dict(payload)
+        report = schema.report_from_dict(payload)
         compact = render.render_compact(report)
         out_path = COMPACT_DIR / json_file.with_suffix(".md").name
         out_path.write_text(compact)
