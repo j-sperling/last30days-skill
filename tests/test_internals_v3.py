@@ -310,10 +310,12 @@ class TestTrimSubqueriesForDepth(unittest.TestCase):
         # Comparison should use all capability-matched sources, not top-3
         self.assertGreater(len(result[0].sources), 3)
 
-    def test_deep_passes_through(self):
-        sqs = [self._sq()]
-        result = planner._trim_subqueries_for_depth(sqs, "comparison", "deep", sqs[0].sources)
-        self.assertEqual(result, sqs)
+    def test_deep_expands_via_capabilities(self):
+        available = ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"]
+        sqs = [self._sq(sources=available)]
+        result = planner._trim_subqueries_for_depth(sqs, "comparison", "deep", available)
+        # Deep comparison should also use capability expansion, not trim
+        self.assertGreaterEqual(len(result[0].sources), 5)
 
 
 # ---------------------------------------------------------------------------
@@ -457,3 +459,65 @@ class TestGenericEngagementFormatter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDefaultDepthDoesNotCapSources(unittest.TestCase):
+    """Default depth must not aggressively limit sources for any intent.
+
+    E2E testing showed factual/opinion/prediction/concept queries getting
+    0-1 sources because SOURCE_LIMITS["default"] capped them at 2-3,
+    and those 2-3 sources returned empty. v2.9.5 searched all available
+    sources and let scoring handle quality.
+    """
+
+    ALL_SOURCES = ["reddit", "x", "grounding", "youtube", "hackernews",
+                   "tiktok", "instagram", "polymarket"]
+
+    def _plan_sources(self, topic: str) -> list[str]:
+        plan = planner.plan_query(
+            topic=topic,
+            available_sources=self.ALL_SOURCES,
+            requested_sources=None,
+            depth="default",
+            provider=None,
+            model=None,
+        )
+        return plan.subqueries[0].sources
+
+    def test_factual_gets_more_than_2_sources(self):
+        sources = self._plan_sources("what is quantum computing")
+        self.assertGreater(len(sources), 2,
+                           f"Factual query capped at {len(sources)} sources: {sources}")
+
+    def test_opinion_gets_more_than_3_sources(self):
+        sources = self._plan_sources("thoughts on Rust")
+        self.assertGreater(len(sources), 3,
+                           f"Opinion query capped at {len(sources)} sources: {sources}")
+
+    def test_prediction_gets_more_than_3_sources(self):
+        sources = self._plan_sources("odds of recession")
+        self.assertGreater(len(sources), 3,
+                           f"Prediction query capped at {len(sources)} sources: {sources}")
+
+    def test_breaking_news_gets_more_than_4_sources(self):
+        sources = self._plan_sources("kanye west")
+        self.assertGreater(len(sources), 4,
+                           f"Breaking news capped at {len(sources)} sources: {sources}")
+
+    def test_concept_gets_more_than_3_sources(self):
+        sources = self._plan_sources("explain transformer architecture")
+        self.assertGreater(len(sources), 3,
+                           f"Concept query capped at {len(sources)} sources: {sources}")
+
+    def test_quick_mode_still_limited(self):
+        """Quick mode should remain tight for latency."""
+        plan = planner.plan_query(
+            topic="what is quantum computing",
+            available_sources=self.ALL_SOURCES,
+            requested_sources=None,
+            depth="quick",
+            provider=None,
+            model=None,
+        )
+        self.assertLessEqual(len(plan.subqueries[0].sources), 3)
+

@@ -48,16 +48,9 @@ SOURCE_LIMITS = {
         "breaking_news": 2,
         "prediction": 2,
     },
-    "default": {
-        "factual": 2,
-        "product": 3,
-        "concept": 3,
-        "opinion": 3,
-        "how_to": 3,
-        "comparison": 3,
-        "breaking_news": 4,
-        "prediction": 3,
-    },
+    # "default" intentionally absent: all available sources are searched
+    # at default depth. Fusion and reranking handle quality. quick mode
+    # uses tight budgets above for latency.
 }
 SOURCE_CAPABILITIES = {
     "grounding": {"web", "reference"},
@@ -186,8 +179,14 @@ def _sanitize_plan(
     if requested:
         source_weights = {source: weight for source, weight in source_weights.items() if source in requested}
     if not source_weights:
-        source_weights = _default_source_weights(_infer_intent(topic), available_sources)
-    elif depth == "default" and intent_hint in DEFAULT_INTENT_CAPABILITIES:
+        source_weights = _default_source_weights(_infer_intent(topic), eligible_sources)
+    # Ensure all eligible sources are available for subqueries. The LLM may
+    # assign high weights to its preferred sources, but omitted sources still
+    # participate with base weight so retrieval can overfetch and let fusion
+    # decide quality.
+    for source in eligible_sources:
+        source_weights.setdefault(source, 1.0)
+    if intent_hint in DEFAULT_INTENT_CAPABILITIES and depth != "quick":
         for source in _default_sources_for_intent(intent_hint, eligible_sources):
             source_weights.setdefault(source, 1.0)
     source_weights = _normalize_weights(source_weights)
@@ -266,10 +265,10 @@ def _trim_subqueries_for_depth(
     depth: str,
     available_sources: list[str],
 ) -> list[schema.SubQuery]:
-    limits = SOURCE_LIMITS.get(depth)
-    if not limits:
-        return subqueries
-    if depth == "default" and intent in DEFAULT_INTENT_CAPABILITIES:
+    # At non-quick depth, expand sources: use capability routing for intents
+    # that define it, or all available sources otherwise. The LLM planner may
+    # assign narrow source lists; we override to let fusion decide quality.
+    if depth != "quick":
         expanded_sources = _default_sources_for_intent(intent, available_sources)
         return [
             schema.SubQuery(
@@ -281,6 +280,9 @@ def _trim_subqueries_for_depth(
             )
             for subquery in subqueries
         ]
+    limits = SOURCE_LIMITS.get(depth)
+    if not limits:
+        return subqueries
     priority_table = QUICK_SOURCE_PRIORITY if depth == "quick" else SOURCE_PRIORITY
     priority = priority_table.get(intent, priority_table["breaking_news"])
     limit = limits.get(intent, 3)

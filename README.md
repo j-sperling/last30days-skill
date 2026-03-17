@@ -4,14 +4,14 @@
 
 The current runtime is a hard-cut v3 pipeline:
 
-1. Query planning
-2. Per-`(subquery, source)` retrieval
-3. Normalization and within-source dedupe
-4. Snippet extraction for long evidence
+1. Query planning (deterministic for comparisons, LLM-assisted for other intents)
+2. Per-`(subquery, source)` retrieval with capability-based source routing
+3. Normalization, within-source dedupe, and low-relevance pruning
+4. Per-source engagement scoring and snippet extraction
 5. Weighted reciprocal rank fusion
-6. Single-score reranking
-7. Cluster formation and representative selection
-8. Cluster-first rendering
+6. Single-score reranking with low-confidence demotion
+7. Cluster formation and MMR representative selection
+8. Cluster-first rendering with inline engagement, dates, and corroboration
 
 ## Runtime
 
@@ -23,6 +23,33 @@ Gemini `3.1` preview is the primary runtime:
 - Google Search grounding: `gemini-3.1-flash-lite-preview`
 
 OpenAI and xAI are still supported as fallback reasoning providers. X retrieval can use xAI or Bird cookie auth. Public web retrieval is grounded through Gemini.
+
+### Query planning
+
+Comparison queries with explicit separators (`vs`, `versus`, `/`, `difference between`) use deterministic entity decomposition. The raw entity names are preserved as-is in search queries -- no LLM rewriting. This prevents hallucination for niche proper nouns the LLM doesn't recognize.
+
+Other intents use LLM-assisted planning with a deterministic fallback. If the LLM call fails, the error is logged to stderr and the plan notes record the failure type.
+
+### Source routing
+
+For `comparison` and `how_to` intents at `default` depth, sources are selected by capability matching (discussion, video, web, market, social) rather than a fixed editorial priority list. This lets fusion and reranking decide quality rather than hard-coded source ordering. `quick` mode still uses tight source budgets for latency.
+
+### Engagement scoring
+
+Each source has its own engagement formula:
+
+- Reddit: score + comments + upvote_ratio + top-comment quality
+- X: likes + reposts + replies + quotes
+- YouTube: views + likes + comments
+- TikTok/Instagram: views + likes + comments
+- Hacker News: points + comments
+- Bluesky: likes + reposts + replies + quotes
+- Truth Social: likes + reposts + replies
+- Polymarket: volume + liquidity
+
+### Rendering
+
+Compact output is cluster-first with inline engagement brackets (`[344pts, 119cmt]`), dates with confidence indicators, author/container context, corroboration from fused candidates (`Also on: X, HN`), top-comment excerpts, freshness warnings, and a source coverage footer. Internal score breakdowns and `fallback-local-score` sentinels are suppressed.
 
 ## Sources
 
@@ -143,11 +170,12 @@ Core commands:
 
 ```bash
 python3 scripts/last30days.py "test topic" --mock --emit=compact
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 -m py_compile $(rg --files scripts tests -g '*.py' -g '!scripts/lib/vendor/**')
+uv run python -m pytest tests/ -v
 python3 scripts/verify_v3.py --skip-eval
 bash scripts/sync.sh
 ```
+
+The test suite (187 tests) includes regression tests for the original `openclaw vs nanoclaw vs ironclaw` failure, adversarial planner tests (slash separators, "difference between" phrasing, trailing context, degenerate inputs), and unit tests for engagement scoring, render formatting, dedupe similarity, and rerank internals.
 
 `scripts/sync.sh` updates the installed skill copies under:
 

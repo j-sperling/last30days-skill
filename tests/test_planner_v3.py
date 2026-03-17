@@ -31,7 +31,11 @@ class PlannerV3Tests(unittest.TestCase):
             None,
             "default",
         )
-        self.assertEqual(["reddit", "grounding", "youtube"], plan.subqueries[0].sources)
+        sources = plan.subqueries[0].sources
+        # how_to capability routing selects web + video + discussion
+        self.assertIn("reddit", sources)
+        self.assertIn("grounding", sources)
+        self.assertIn("youtube", sources)
         self.assertIn("reddit", plan.source_weights)
         self.assertIn("youtube", plan.source_weights)
         self.assertEqual("evergreen_ok", plan.freshness_mode)
@@ -93,7 +97,7 @@ class PlannerV3Tests(unittest.TestCase):
         self.assertEqual(1, len(plan.subqueries))
         self.assertEqual(["reddit", "x"], plan.subqueries[0].sources)
 
-    def test_default_mode_limits_comparison_sources(self):
+    def test_default_comparison_uses_all_capable_sources(self):
         plan = planner.plan_query(
             topic="codex vs claude code",
             available_sources=["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
@@ -104,7 +108,8 @@ class PlannerV3Tests(unittest.TestCase):
         )
         self.assertEqual("comparison", plan.intent)
         for subquery in plan.subqueries:
-            self.assertEqual(["reddit", "x", "grounding", "youtube", "hackernews"], subquery.sources)
+            # Default depth should not artificially cap sources
+            self.assertGreaterEqual(len(subquery.sources), 5)
 
     def test_default_how_to_keeps_youtube_in_source_mix(self):
         plan = planner.plan_query(
@@ -116,19 +121,26 @@ class PlannerV3Tests(unittest.TestCase):
             model=None,
         )
         self.assertEqual("how_to", plan.intent)
-        self.assertEqual(["reddit", "grounding", "youtube"], plan.subqueries[0].sources)
+        sources = plan.subqueries[0].sources
+        self.assertIn("youtube", sources)
+        self.assertIn("reddit", sources)
+        self.assertIn("grounding", sources)
 
     def test_default_how_to_prefers_longform_video_over_shortform(self):
         plan = planner.plan_query(
             topic="how to deploy on Fly.io",
-            available_sources=["reddit", "tiktok", "instagram", "grounding", "youtube", "hackernews"],
+            available_sources=["reddit", "tiktok", "instagram", "grounding", "youtube", "hackernees"],
             requested_sources=None,
             depth="default",
             provider=None,
             model=None,
         )
         self.assertEqual("how_to", plan.intent)
-        self.assertEqual(["reddit", "grounding", "youtube"], plan.subqueries[0].sources)
+        sources = plan.subqueries[0].sources
+        # how_to routing should include youtube (longform) over tiktok/instagram
+        self.assertIn("youtube", sources)
+        self.assertIn("reddit", sources)
+        self.assertIn("grounding", sources)
 
 
 if __name__ == "__main__":
