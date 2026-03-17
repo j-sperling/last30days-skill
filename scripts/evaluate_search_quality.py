@@ -50,20 +50,54 @@ def row_best_date(row: dict[str, Any]) -> str | None:
     return schema.candidate_best_published_at(candidate)
 
 
+V2_SOURCE_KEYS = [
+    ("reddit", "title"),
+    ("x", "text"),
+    ("youtube", "title"),
+    ("tiktok", "text"),
+    ("instagram", "text"),
+    ("hackernews", "title"),
+    ("bluesky", "text"),
+    ("truthsocial", "text"),
+    ("polymarket", "question"),
+    ("web", "title"),
+]
+
+
 def build_ranked_items(report: dict[str, Any], limit: int) -> list[dict[str, Any]]:
-    ranked = []
-    for row in (report.get("ranked_candidates") or [])[:limit]:
-        candidate_sources = row_sources(row)
-        ranked.append({
-            "key": stable_item_key(row),
-            "source": ", ".join(candidate_sources),
-            "sources": candidate_sources,
-            "url": str(row.get("url") or ""),
-            "text": str(row.get("title") or ""),
-            "date": row_best_date(row),
-            "score": float(row.get("final_score") or 0.0),
-        })
-    return ranked
+    # v3 format: ranked_candidates list
+    if report.get("ranked_candidates"):
+        ranked = []
+        for row in report["ranked_candidates"][:limit]:
+            candidate_sources = row_sources(row)
+            ranked.append({
+                "key": stable_item_key(row),
+                "source": ", ".join(candidate_sources),
+                "sources": candidate_sources,
+                "url": str(row.get("url") or ""),
+                "text": str(row.get("title") or ""),
+                "date": row_best_date(row),
+                "score": float(row.get("final_score") or 0.0),
+            })
+        return ranked
+
+    # v2 format: per-source lists (reddit, x, youtube, etc.)
+    all_items = []
+    for source_key, text_field in V2_SOURCE_KEYS:
+        for item in report.get(source_key) or []:
+            if not isinstance(item, dict):
+                continue
+            all_items.append({
+                "key": str(item.get("url") or item.get("id") or item.get(text_field) or ""),
+                "source": source_key,
+                "sources": [source_key],
+                "url": str(item.get("url") or ""),
+                "text": str(item.get(text_field) or item.get("title") or ""),
+                "date": item.get("date"),
+                "score": float(item.get("score") or 0.0),
+            })
+    all_items.sort(key=lambda x: x["score"], reverse=True)
+    return all_items[:limit]
 
 
 def source_sets(report: dict[str, Any], limit: int) -> dict[str, set[str]]:
