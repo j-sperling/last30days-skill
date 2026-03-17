@@ -521,3 +521,20 @@ class TestDefaultDepthDoesNotCapSources(unittest.TestCase):
         )
         self.assertLessEqual(len(plan.subqueries[0].sources), 3)
 
+
+
+class TestXaiModelDefault(unittest.TestCase):
+    """XAI_DEFAULT must be a model that xAI's API actually accepts."""
+
+    def test_default_is_not_grok_3(self):
+        from lib import providers
+        self.assertNotEqual(providers.XAI_DEFAULT, "grok-3-fast",
+                            "grok-3-fast returns HTTP 400 from xAI API")
+        self.assertNotEqual(providers.XAI_DEFAULT, "grok-3-mini-fast",
+                            "grok-3-mini-fast returns HTTP 400 from xAI API")
+
+    def test_default_is_grok_4_generation(self):
+        from lib import providers
+        self.assertIn("grok-4", providers.XAI_DEFAULT,
+                      f"XAI_DEFAULT should be a grok-4 model, got: {providers.XAI_DEFAULT}")
+
