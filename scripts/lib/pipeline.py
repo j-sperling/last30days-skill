@@ -179,8 +179,15 @@ def run(
             subquery, source = futures[future]
             try:
                 raw_items, artifact = future.result()
-                normalized = normalize.normalize_source_items(source, raw_items, from_date, to_date)
+                normalized = normalize.normalize_source_items(
+                    source,
+                    raw_items,
+                    from_date,
+                    to_date,
+                    freshness_mode=plan.freshness_mode,
+                )
                 normalized = signals.annotate_stream(normalized, subquery.ranking_query, plan.freshness_mode)
+                normalized = signals.prune_low_relevance(normalized)
                 normalized = dedupe.dedupe_items(normalized)
                 for item in normalized:
                     item.snippet = snippet.extract_best_snippet(item, subquery.ranking_query)

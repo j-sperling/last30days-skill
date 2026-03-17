@@ -122,7 +122,7 @@ def _infer_query_intent(topic: str) -> str:
     text = topic.lower().strip()
     if re.search(r"\b(vs|versus|compare|difference between)\b", text):
         return "comparison"
-    if re.search(r"\b(how to|tutorial|guide|setup|step by step|deploy|install)\b", text):
+    if re.search(r"\b(how to|tutorial|guide|setup|step by step|deploy|install|configuration|configure|troubleshoot|troubleshooting|error|errors|fix|debug)\b", text):
         return "how_to"
     if re.search(r"\b(thoughts on|worth it|should i|opinion|review)\b", text):
         return "opinion"
@@ -441,6 +441,7 @@ def search_reddit(
 
     config = DEPTH_CONFIG.get(depth, DEPTH_CONFIG["default"])
     timeframe = config["timeframe"]
+    intent = _infer_query_intent(topic)
 
     # === Phase 1: Query Expansion ===
     queries = expand_reddit_queries(topic, depth)
@@ -470,10 +471,11 @@ def search_reddit(
         all_items.append(item)
 
     # === Phase 3: Subreddit Discovery + Targeted Search ===
-    discovered_subs = discover_subreddits(all_raw_posts, topic=topic, max_subs=config["subreddit_searches"])
+    subreddit_budget = 0 if intent == "how_to" else config["subreddit_searches"]
+    discovered_subs = discover_subreddits(all_raw_posts, topic=topic, max_subs=subreddit_budget)
     _log(f"Discovered subreddits: {discovered_subs}")
 
-    subreddit_limit = config["subreddit_searches"]
+    subreddit_limit = subreddit_budget
     if subreddit_limit > 0:
         with ThreadPoolExecutor(max_workers=subreddit_limit) as executor:
             futures = {}

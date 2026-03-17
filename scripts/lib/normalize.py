@@ -32,6 +32,7 @@ def normalize_source_items(
     items: list[dict[str, Any]],
     from_date: str,
     to_date: str,
+    freshness_mode: str = "balanced_recent",
 ) -> list[schema.SourceItem]:
     """Dispatch to the source-specific normalizer."""
     source = source.lower()
@@ -53,7 +54,14 @@ def normalize_source_items(
         raise ValueError(f"Unsupported source: {source}")
     normalized = [normalizer(source, item, index, from_date, to_date) for index, item in enumerate(items)]
     require_date = source == "grounding"
-    return filter_by_date_range(normalized, from_date, to_date, require_date=require_date)
+    filtered = filter_by_date_range(normalized, from_date, to_date, require_date=require_date)
+    if filtered:
+        return filtered
+    if freshness_mode == "evergreen_ok" and source in {"grounding", "youtube"}:
+        if require_date:
+            return [item for item in normalized if item.published_at]
+        return normalized
+    return filtered
 
 
 def _domain_from_url(url: str) -> str | None:
@@ -279,7 +287,11 @@ def _normalize_hackernews(
         relevance_hint=item.get("relevance", 0.5),
         why_relevant=str(item.get("why_relevant") or ""),
         snippet=comment_text,
-        metadata={"hn_url": item.get("hn_url"), "comment_insights": item.get("comment_insights") or []},
+        metadata={
+            "hn_url": item.get("hn_url"),
+            "top_comments": top_comments,
+            "comment_insights": item.get("comment_insights") or [],
+        },
     )
 
 
