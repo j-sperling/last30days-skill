@@ -12,6 +12,9 @@ variants/open/references/research.md
 .DS_Store
 .claude/
 .entire/
+.venv/
 __pycache__/
 *.pyc
+.coverage
+htmlcov/
 mise.toml
