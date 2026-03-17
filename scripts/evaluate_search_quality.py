@@ -26,11 +26,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TOPICS = [
     ("nano banana pro prompting", "product"),
     ("codex vs claude code", "comparison"),
+    ("openclaw vs nanoclaw vs ironclaw", "comparison"),
     ("anthropic odds", "prediction"),
     ("kanye west", "breaking_news"),
     ("remotion animations for Claude Code", "how_to"),
 ]
-DEFAULT_SEARCH = "reddit,x,youtube,hackernews,polymarket,grounding"
+DEFAULT_SEARCH = ""
 DEFAULT_JUDGE_MODEL = "gemini-3.1-flash-lite-preview"
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
@@ -262,7 +263,9 @@ def create_eval_env() -> dict[str, str]:
 
 
 def run_last30days(repo_dir: Path, topic: str, *, search: str, timeout_seconds: int, quick: bool, mock: bool, env: dict[str, str]) -> dict[str, Any]:
-    cmd = [sys.executable, "scripts/last30days.py", topic, "--emit=json", "--search", search]
+    cmd = [sys.executable, "scripts/last30days.py", topic, "--emit=json"]
+    if search:
+        cmd.extend(["--search", search])
     if quick:
         cmd.append("--quick")
     if mock:
