@@ -367,5 +367,93 @@ class TestPruneLowRelevance(unittest.TestCase):
         self.assertEqual(len(result), 1)  # fallback keeps all
 
 
+# ---------------------------------------------------------------------------
+# Bug fixes found by PR review agents
+# ---------------------------------------------------------------------------
+
+class TestDaysAgoZeroFalsy(unittest.TestCase):
+    """render._assess_data_freshness must not treat days_ago=0 as falsy."""
+
+    def _report_with_items(self, dates_list: list[str]) -> schema.Report:
+        items = [_item(published_at=d) for d in dates_list]
+        return schema.Report(
+            topic="test", range_from="2026-02-15", range_to="2026-03-17",
+            generated_at="2026-03-17T00:00:00Z",
+            provider_runtime=schema.ProviderRuntime(
+                reasoning_provider="test", planner_model="test",
+                rerank_model="test", grounding_model="test",
+            ),
+            query_plan=schema.QueryPlan(
+                intent="comparison", freshness_mode="balanced_recent",
+                cluster_mode="debate", raw_topic="test", subqueries=[],
+                source_weights={},
+            ),
+            clusters=[], ranked_candidates=[],
+            items_by_source={"reddit": items}, errors_by_source={},
+        )
+
+    def test_items_from_today_count_as_recent(self):
+        from datetime import date
+        today = date.today().isoformat()
+        report = self._report_with_items([today] * 5)
+        warning = render._assess_data_freshness(report)
+        self.assertIsNone(warning, f"Items from today should be recent, got warning: {warning}")
+
+
+class TestRerankBoundary(unittest.TestCase):
+    """Rerank demotion must have a clean boundary at exactly 5.0."""
+
+    def test_score_at_exactly_5_is_not_demoted(self):
+        c = _candidate()
+        c.rerank_score = 5.0
+        score_at_5 = rerank._final_score(c)
+        c.rerank_score = 50.0
+        score_at_50 = rerank._final_score(c)
+        # Score at 5.0 should NOT be 0.3x multiplied
+        self.assertGreater(score_at_5 / score_at_50, 0.08,
+                           "Score at 5.0 should not be demoted")
+
+    def test_score_at_4_99_is_demoted(self):
+        c = _candidate()
+        c.rerank_score = 4.99
+        score_demoted = rerank._final_score(c)
+        c.rerank_score = 5.0
+        score_not_demoted = rerank._final_score(c)
+        self.assertLess(score_demoted, score_not_demoted * 0.5,
+                        "Score at 4.99 should be heavily demoted vs 5.0")
+
+
+class TestSlashFalsePositives(unittest.TestCase):
+    """Slash regex must not misclassify compound terms as comparisons."""
+
+    def test_ci_cd_is_not_comparison(self):
+        self.assertNotEqual(planner._infer_intent("CI/CD pipeline setup"), "comparison")
+
+    def test_tcp_ip_is_not_comparison(self):
+        self.assertNotEqual(planner._infer_intent("TCP/IP networking guide"), "comparison")
+
+    def test_io_is_not_comparison(self):
+        self.assertNotEqual(planner._infer_intent("I/O performance tuning"), "comparison")
+
+    def test_os_kernel_is_not_comparison(self):
+        self.assertNotEqual(planner._infer_intent("input/output buffering"), "comparison")
+
+    def test_proper_noun_slash_still_works(self):
+        self.assertEqual(planner._infer_intent("React/Vue/Svelte"), "comparison")
+
+
+class TestGenericEngagementFormatter(unittest.TestCase):
+    """Generic formatter must not garble output for unknown sources."""
+
+    def test_xiaohongshu_engagement_not_garbled(self):
+        item = _item(source="xiaohongshu", engagement={"likes": 500, "views": 10000})
+        result = render._format_engagement(item)
+        if result is not None:
+            self.assertNotIn("likes500", result, "Key used as value prefix")
+            self.assertNotIn("views10000", result, "Key used as value prefix")
+            # Should contain numeric values, not dict keys as numbers
+            self.assertIn("500", result)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -149,7 +149,7 @@ def _assess_data_freshness(report: schema.Report) -> str | None:
     recent_items = [
         item
         for item in dated_items
-        if (dates.days_ago(item.published_at) or 10**9) <= 7
+        if (_days_ago := dates.days_ago(item.published_at)) is not None and _days_ago <= 7
     ]
     if len(recent_items) < 3:
         return f"Limited recent data: only {len(recent_items)} of {len(dated_items)} dated items are from the last 7 days."
@@ -182,73 +182,31 @@ def _format_actor(item: schema.SourceItem | None) -> str | None:
     return None
 
 
+# Per-source engagement display fields: list of (field_name, label) tuples.
+ENGAGEMENT_DISPLAY: dict[str, list[tuple[str, str]]] = {
+    "reddit":       [("score", "pts"), ("num_comments", "cmt")],
+    "x":            [("likes", "likes"), ("reposts", "rt"), ("replies", "re")],
+    "youtube":      [("views", "views"), ("likes", "likes"), ("comments", "cmt")],
+    "tiktok":       [("views", "views"), ("likes", "likes"), ("comments", "cmt")],
+    "instagram":    [("views", "views"), ("likes", "likes"), ("comments", "cmt")],
+    "hackernews":   [("points", "pts"), ("comments", "cmt")],
+    "bluesky":      [("likes", "likes"), ("reposts", "rt"), ("replies", "re")],
+    "truthsocial":  [("likes", "likes"), ("reposts", "rt"), ("replies", "re")],
+    "polymarket":   [("volume", "vol"), ("liquidity", "liq")],
+}
+
+
 def _format_engagement(item: schema.SourceItem | None) -> str | None:
     if not item or not item.engagement:
         return None
     engagement = item.engagement
-    formatters = {
-        "reddit": lambda: _fmt_pairs(
-            [
-                (engagement.get("score"), "pts"),
-                (engagement.get("num_comments"), "cmt"),
-            ]
-        ),
-        "x": lambda: _fmt_pairs(
-            [
-                (engagement.get("likes"), "likes"),
-                (engagement.get("reposts"), "rt"),
-                (engagement.get("replies"), "re"),
-            ]
-        ),
-        "youtube": lambda: _fmt_pairs(
-            [
-                (engagement.get("views"), "views"),
-                (engagement.get("likes"), "likes"),
-                (engagement.get("comments"), "cmt"),
-            ]
-        ),
-        "tiktok": lambda: _fmt_pairs(
-            [
-                (engagement.get("views"), "views"),
-                (engagement.get("likes"), "likes"),
-                (engagement.get("comments"), "cmt"),
-            ]
-        ),
-        "instagram": lambda: _fmt_pairs(
-            [
-                (engagement.get("views"), "views"),
-                (engagement.get("likes"), "likes"),
-                (engagement.get("comments"), "cmt"),
-            ]
-        ),
-        "hackernews": lambda: _fmt_pairs(
-            [
-                (engagement.get("points"), "pts"),
-                (engagement.get("comments"), "cmt"),
-            ]
-        ),
-        "bluesky": lambda: _fmt_pairs(
-            [
-                (engagement.get("likes"), "likes"),
-                (engagement.get("reposts"), "rt"),
-                (engagement.get("replies"), "re"),
-            ]
-        ),
-        "truthsocial": lambda: _fmt_pairs(
-            [
-                (engagement.get("likes"), "likes"),
-                (engagement.get("reposts"), "rt"),
-                (engagement.get("replies"), "re"),
-            ]
-        ),
-        "polymarket": lambda: _fmt_pairs(
-            [
-                (engagement.get("volume"), "vol"),
-                (engagement.get("liquidity"), "liq"),
-            ]
-        ),
-    }
-    text = formatters.get(item.source, lambda: _fmt_pairs(list(engagement.items())[:3]))()
+    fields = ENGAGEMENT_DISPLAY.get(item.source)
+    if fields:
+        text = _fmt_pairs([(engagement.get(field), label) for field, label in fields])
+    else:
+        # Generic fallback: engagement.items() yields (key, value) but
+        # _fmt_pairs expects (value, label), so swap them.
+        text = _fmt_pairs([(value, key) for key, value in list(engagement.items())[:3]])
     return f"[{text}]" if text else None
 
 

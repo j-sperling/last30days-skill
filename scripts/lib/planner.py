@@ -88,7 +88,8 @@ def plan_query(
     provider: object | None,
     model: str | None,
 ) -> schema.QueryPlan:
-    """Create a query plan, preferring the configured reasoning provider."""
+    """Create a query plan. Comparison queries with extractable entities use a
+    deterministic plan; other intents prefer the configured reasoning provider."""
     if _should_force_deterministic_plan(topic):
         return _fallback_plan(
             topic,
@@ -104,8 +105,13 @@ def plan_query(
             plan = _sanitize_plan(raw, topic, available_sources, requested_sources, depth)
             if plan.subqueries:
                 return plan
-        except Exception:
-            pass
+        except Exception as exc:
+            import sys
+            print(f"[Planner] LLM planning failed, using deterministic fallback: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return _fallback_plan(
+                topic, available_sources, requested_sources, depth,
+                note=f"fallback-plan (LLM error: {type(exc).__name__})",
+            )
     return _fallback_plan(topic, available_sources, requested_sources, depth)
 
 
@@ -379,8 +385,8 @@ def _infer_intent(topic: str) -> str:
     text = topic.lower().strip()
     if re.search(r"\b(vs|versus|compare|compared to|difference between)\b", text):
         return "comparison"
-    # Slash-separated capitalized words: "React/Vue/Svelte" (but not URLs)
-    if not re.search(r"https?://", topic) and re.search(r"\b[A-Za-z]+/[A-Za-z]+\b", topic):
+    # Slash-separated proper nouns: "React/Vue/Svelte" (not URLs, not acronyms like CI/CD or I/O)
+    if not re.search(r"https?://", topic) and re.search(r"\b[A-Z][a-z]{2,}(?:/[A-Z][a-z]{2,})+\b", topic):
         return "comparison"
     if re.search(r"\b(odds|predict|prediction|forecast|chance|probability|will .* win)\b", text):
         return "prediction"
@@ -496,38 +502,8 @@ def _max_subqueries(intent: str) -> int:
 
 
 def _default_sources_for_intent(intent: str, available_sources: list[str]) -> list[str]:
-    if intent == "comparison":
-        target_capabilities = DEFAULT_INTENT_CAPABILITIES.get(intent)
-        matched = [
-            source
-            for source in available_sources
-            if SOURCE_CAPABILITIES.get(source, set()) & (target_capabilities or set())
-        ]
-        return matched or list(available_sources)
-
     if intent == "how_to":
-        selected: set[str] = set()
-        capability_groups = [
-            ({"web", "reference"}, True),
-            ({"video_longform"}, False),
-            ({"video"}, False),
-            ({"discussion"}, True),
-        ]
-        for group, required in capability_groups:
-            if not required and selected & {
-                source for source in available_sources if SOURCE_CAPABILITIES.get(source, set()) & {"video", "video_longform"}
-            }:
-                continue
-            for source in available_sources:
-                if source in selected:
-                    continue
-                if SOURCE_CAPABILITIES.get(source, set()) & group:
-                    selected.add(source)
-                    break
-        if not selected:
-            return list(available_sources)
-        return [source for source in available_sources if source in selected]
-
+        return _how_to_sources(available_sources)
     target_capabilities = DEFAULT_INTENT_CAPABILITIES.get(intent)
     if not target_capabilities:
         return list(available_sources)
@@ -537,3 +513,31 @@ def _default_sources_for_intent(intent: str, available_sources: list[str]) -> li
         if SOURCE_CAPABILITIES.get(source, set()) & target_capabilities
     ]
     return matched or list(available_sources)
+
+
+def _how_to_sources(available_sources: list[str]) -> list[str]:
+    """Pick one source per role: web/reference, video (prefer longform), discussion."""
+    selected: set[str] = set()
+    has_video = False
+    # Order matters: web first, then longform video, generic video, discussion.
+    role_capabilities = [
+        {"web", "reference"},
+        {"video_longform"},
+        {"video"},
+        {"discussion"},
+    ]
+    for role in role_capabilities:
+        is_video_role = role & {"video", "video_longform"}
+        if is_video_role and has_video:
+            continue
+        for source in available_sources:
+            if source in selected:
+                continue
+            if SOURCE_CAPABILITIES.get(source, set()) & role:
+                selected.add(source)
+                if is_video_role:
+                    has_video = True
+                break
+    if not selected:
+        return list(available_sources)
+    return [source for source in available_sources if source in selected]

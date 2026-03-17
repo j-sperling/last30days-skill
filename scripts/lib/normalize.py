@@ -34,7 +34,7 @@ def normalize_source_items(
     to_date: str,
     freshness_mode: str = "balanced_recent",
 ) -> list[schema.SourceItem]:
-    """Dispatch to the source-specific normalizer."""
+    """Normalize raw source items, filter by date range, with evergreen fallback for how_to queries."""
     source = source.lower()
     normalizers = {
         "reddit": _normalize_reddit,

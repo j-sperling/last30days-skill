@@ -1,4 +1,4 @@
-"""Simple single-score reranking over the fused candidate pool."""
+"""Reranking with LLM-scored relevance and demotion of low-confidence candidates."""
 
 from __future__ import annotations
 
@@ -14,13 +14,15 @@ def rerank_candidates(
     model: str | None,
     shortlist_size: int,
 ) -> list[schema.Candidate]:
-    """Rerank the fused shortlist with a single relevance score."""
+    """Rerank the fused shortlist, demoting candidates the reranker scored as irrelevant."""
     shortlisted = candidates[:shortlist_size]
     if provider and model and shortlisted:
         try:
             response = provider.generate_json(model, _build_prompt(topic, plan, shortlisted))
             _apply_llm_scores(shortlisted, response)
-        except Exception:
+        except Exception as exc:
+            import sys
+            print(f"[Rerank] LLM reranking failed, using local fallback: {type(exc).__name__}: {exc}", file=sys.stderr)
             _apply_fallback_scores(shortlisted)
     else:
         _apply_fallback_scores(shortlisted)

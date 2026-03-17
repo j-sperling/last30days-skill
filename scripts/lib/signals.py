@@ -63,6 +63,28 @@ def _top_comment_score(item: schema.SourceItem) -> float:
     return log1p_safe(comments[0].get("score"))
 
 
+# Per-source engagement weights: list of (field_name, weight) tuples.
+# Reddit uses a custom function because upvote_ratio and top_comment_score
+# are not simple log1p fields.
+ENGAGEMENT_WEIGHTS: dict[str, list[tuple[str, float]]] = {
+    "x":            [("likes", 0.55), ("reposts", 0.25), ("replies", 0.15), ("quotes", 0.05)],
+    "youtube":      [("views", 0.50), ("likes", 0.35), ("comments", 0.15)],
+    "tiktok":       [("views", 0.50), ("likes", 0.30), ("comments", 0.20)],
+    "instagram":    [("views", 0.50), ("likes", 0.30), ("comments", 0.20)],
+    "hackernews":   [("points", 0.55), ("comments", 0.45)],
+    "bluesky":      [("likes", 0.40), ("reposts", 0.30), ("replies", 0.20), ("quotes", 0.10)],
+    "truthsocial":  [("likes", 0.45), ("reposts", 0.30), ("replies", 0.25)],
+    "polymarket":   [("volume", 0.60), ("liquidity", 0.40)],
+}
+
+
+def _weighted_engagement(item: schema.SourceItem, weights: list[tuple[str, float]]) -> float | None:
+    values = [(log1p_safe(item.engagement.get(field)), weight) for field, weight in weights]
+    if not any(v for v, _ in values):
+        return None
+    return sum(v * w for v, w in values)
+
+
 def _reddit_engagement(item: schema.SourceItem) -> float | None:
     score = log1p_safe(item.engagement.get("score"))
     comments = log1p_safe(item.engagement.get("num_comments"))
@@ -73,95 +95,22 @@ def _reddit_engagement(item: schema.SourceItem) -> float | None:
     return (0.50 * score) + (0.35 * comments) + (0.05 * (ratio * 10.0)) + (0.10 * top_comment)
 
 
-def _x_engagement(item: schema.SourceItem) -> float | None:
-    likes = log1p_safe(item.engagement.get("likes"))
-    reposts = log1p_safe(item.engagement.get("reposts"))
-    replies = log1p_safe(item.engagement.get("replies"))
-    quotes = log1p_safe(item.engagement.get("quotes"))
-    if not any([likes, reposts, replies, quotes]):
-        return None
-    return (0.55 * likes) + (0.25 * reposts) + (0.15 * replies) + (0.05 * quotes)
-
-
-def _youtube_engagement(item: schema.SourceItem) -> float | None:
-    views = log1p_safe(item.engagement.get("views"))
-    likes = log1p_safe(item.engagement.get("likes"))
-    comments = log1p_safe(item.engagement.get("comments"))
-    if not any([views, likes, comments]):
-        return None
-    return (0.50 * views) + (0.35 * likes) + (0.15 * comments)
-
-
-def _short_video_engagement(item: schema.SourceItem) -> float | None:
-    views = log1p_safe(item.engagement.get("views"))
-    likes = log1p_safe(item.engagement.get("likes"))
-    comments = log1p_safe(item.engagement.get("comments"))
-    if not any([views, likes, comments]):
-        return None
-    return (0.50 * views) + (0.30 * likes) + (0.20 * comments)
-
-
-def _hackernews_engagement(item: schema.SourceItem) -> float | None:
-    points = log1p_safe(item.engagement.get("points"))
-    comments = log1p_safe(item.engagement.get("comments"))
-    if not any([points, comments]):
-        return None
-    return (0.55 * points) + (0.45 * comments)
-
-
-def _bluesky_engagement(item: schema.SourceItem) -> float | None:
-    likes = log1p_safe(item.engagement.get("likes"))
-    reposts = log1p_safe(item.engagement.get("reposts"))
-    replies = log1p_safe(item.engagement.get("replies"))
-    quotes = log1p_safe(item.engagement.get("quotes"))
-    if not any([likes, reposts, replies, quotes]):
-        return None
-    return (0.40 * likes) + (0.30 * reposts) + (0.20 * replies) + (0.10 * quotes)
-
-
-def _truthsocial_engagement(item: schema.SourceItem) -> float | None:
-    likes = log1p_safe(item.engagement.get("likes"))
-    reposts = log1p_safe(item.engagement.get("reposts"))
-    replies = log1p_safe(item.engagement.get("replies"))
-    if not any([likes, reposts, replies]):
-        return None
-    return (0.45 * likes) + (0.30 * reposts) + (0.25 * replies)
-
-
-def _polymarket_engagement(item: schema.SourceItem) -> float | None:
-    volume = log1p_safe(item.engagement.get("volume"))
-    liquidity = log1p_safe(item.engagement.get("liquidity"))
-    if not any([volume, liquidity]):
-        return None
-    return (0.60 * volume) + (0.40 * liquidity)
-
-
 def _generic_engagement(item: schema.SourceItem) -> float | None:
     if not item.engagement:
         return None
-    values = []
-    for value in item.engagement.values():
-        logged = log1p_safe(value)
-        if logged > 0:
-            values.append(logged)
+    values = [logged for v in item.engagement.values() if (logged := log1p_safe(v)) > 0]
     if not values:
         return None
     return sum(values) / len(values)
 
 
 def engagement_raw(item: schema.SourceItem) -> float | None:
-    dispatch = {
-        "reddit": _reddit_engagement,
-        "x": _x_engagement,
-        "youtube": _youtube_engagement,
-        "tiktok": _short_video_engagement,
-        "instagram": _short_video_engagement,
-        "hackernews": _hackernews_engagement,
-        "bluesky": _bluesky_engagement,
-        "truthsocial": _truthsocial_engagement,
-        "polymarket": _polymarket_engagement,
-    }
-    return dispatch.get(item.source, _generic_engagement)(item)
+    if item.source == "reddit":
+        return _reddit_engagement(item)
+    weights = ENGAGEMENT_WEIGHTS.get(item.source)
+    if weights:
+        return _weighted_engagement(item, weights)
+    return _generic_engagement(item)
 
 
 def normalize(values: list[float | None]) -> list[int | None]:
@@ -185,7 +134,7 @@ def annotate_stream(
     ranking_query: str,
     freshness_mode: str,
 ) -> list[schema.SourceItem]:
-    """Attach local scoring metadata for a single retrieval stream."""
+    """Attach local scoring metadata and return items sorted by local_rank_score."""
     engagement_scores = normalize([engagement_raw(item) for item in items])
     for item, engagement_score in zip(items, engagement_scores, strict=True):
         item.metadata["local_relevance"] = local_relevance(item, ranking_query)
