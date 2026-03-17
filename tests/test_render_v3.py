@@ -8,10 +8,37 @@ from lib import render, schema
 
 
 def sample_report() -> schema.Report:
-    candidate = schema.Candidate(
-        candidate_id="c1",
+    primary_item = schema.SourceItem(
         item_id="i1",
         source="grounding",
+        title="Grounded result",
+        body="A grounded body with useful detail.",
+        url="https://example.com",
+        container="example.com",
+        published_at="2026-03-15",
+        date_confidence="high",
+        snippet="A grounded snippet about the topic.",
+        metadata={},
+    )
+    reddit_item = schema.SourceItem(
+        item_id="i2",
+        source="reddit",
+        title="Grounded result",
+        body="Reddit discussion body.",
+        url="https://example.com",
+        container="LocalLLaMA",
+        published_at="2026-03-14",
+        date_confidence="high",
+        engagement={"score": 344, "num_comments": 119, "upvote_ratio": 0.92},
+        metadata={
+            "top_comments": [{"excerpt": "This is the strongest user reaction.", "score": 22}],
+            "comment_insights": ["Users corroborate the main claim."],
+        },
+    )
+    candidate = schema.Candidate(
+        candidate_id="c1",
+        item_id="i2",
+        source="reddit",
         title="Grounded result",
         url="https://example.com",
         snippet="A grounded snippet about the topic.",
@@ -19,12 +46,14 @@ def sample_report() -> schema.Report:
         native_ranks={"primary:grounding": 1},
         local_relevance=0.9,
         freshness=90,
-        engagement=None,
+        engagement=88,
         source_quality=1.0,
         rrf_score=0.02,
         rerank_score=92,
         final_score=90,
         explanation="high-signal result",
+        sources=["reddit", "grounding"],
+        source_items=[reddit_item, primary_item],
     )
     cluster = schema.Cluster(
         cluster_id="cluster-1",
@@ -55,7 +84,7 @@ def sample_report() -> schema.Report:
         ),
         clusters=[cluster],
         ranked_candidates=[candidate],
-        items_by_source={"grounding": []},
+        items_by_source={"grounding": [primary_item], "reddit": [reddit_item]},
         errors_by_source={},
     )
 
@@ -65,7 +94,12 @@ class RenderV3Tests(unittest.TestCase):
         text = render.render_compact(sample_report())
         self.assertIn("# last30days v3.0.0: test topic", text)
         self.assertIn("## Ranked Evidence Clusters", text)
-        self.assertIn("[grounding] Grounded result", text)
+        self.assertIn("[reddit, grounding] Grounded result", text)
+        self.assertIn("[344pts, 119cmt]", text)
+        self.assertIn("Also on: Grounded Web", text)
+        self.assertIn("Top comment: This is the strongest user reaction.", text)
+        self.assertIn("Insight: Users corroborate the main claim.", text)
+        self.assertIn("## Source Coverage", text)
 
     def test_render_context_includes_top_clusters(self):
         text = render.render_context(sample_report())
