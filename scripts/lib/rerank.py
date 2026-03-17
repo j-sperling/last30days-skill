@@ -127,12 +127,15 @@ def _fallback_tuple(candidate: schema.Candidate) -> tuple[float, str]:
 def _final_score(candidate: schema.Candidate) -> float:
     normalized_rrf = _normalized_rrf(candidate.rrf_score)
     rerank_score = candidate.rerank_score or 0.0
-    return (
+    base = (
         0.60 * rerank_score
         + 0.25 * normalized_rrf
         + 0.10 * candidate.freshness
         + 0.05 * (candidate.source_quality * 100.0)
     )
+    if candidate.rerank_score is not None and candidate.rerank_score < 5.0:
+        base *= 0.3
+    return base
 
 
 def _normalized_rrf(rrf_score: float) -> float:
