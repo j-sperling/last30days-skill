@@ -8,6 +8,51 @@ from lib import planner
 
 
 class PlannerV3Tests(unittest.TestCase):
+    def test_default_how_to_expands_past_llm_narrow_source_weights(self):
+        raw = {
+            "intent": "how_to",
+            "freshness_mode": "balanced_recent",
+            "cluster_mode": "workflow",
+            "source_weights": {"grounding": 0.7, "hackernews": 0.3},
+            "subqueries": [
+                {
+                    "label": "primary",
+                    "search_query": "deploy app to Fly.io guide",
+                    "ranking_query": "How do I deploy an app to Fly.io?",
+                    "sources": ["grounding", "hackernews"],
+                    "weight": 1.0,
+                }
+            ],
+        }
+        plan = planner._sanitize_plan(
+            raw,
+            "how to deploy on Fly.io",
+            ["reddit", "x", "grounding", "youtube", "hackernews"],
+            None,
+            "default",
+        )
+        self.assertEqual(["reddit", "grounding", "youtube"], plan.subqueries[0].sources)
+        self.assertIn("reddit", plan.source_weights)
+        self.assertIn("youtube", plan.source_weights)
+        self.assertEqual("evergreen_ok", plan.freshness_mode)
+
+    def test_comparison_uses_deterministic_plan_and_preserves_entities(self):
+        plan = planner.plan_query(
+            topic="openclaw vs nanoclaw vs ironclaw",
+            available_sources=["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
+            requested_sources=None,
+            depth="default",
+            provider=object(),
+            model="ignored",
+        )
+        self.assertEqual("comparison", plan.intent)
+        self.assertEqual(["deterministic-comparison-plan"], plan.notes)
+        self.assertEqual(4, len(plan.subqueries))
+        joined_queries = "\n".join(subquery.search_query for subquery in plan.subqueries).lower()
+        self.assertIn("openclaw", joined_queries)
+        self.assertIn("nanoclaw", joined_queries)
+        self.assertIn("ironclaw", joined_queries)
+
     def test_fallback_plan_emits_dual_query_fields(self):
         plan = planner.plan_query(
             topic="codex vs claude code",
@@ -59,7 +104,7 @@ class PlannerV3Tests(unittest.TestCase):
         )
         self.assertEqual("comparison", plan.intent)
         for subquery in plan.subqueries:
-            self.assertEqual(["reddit", "x", "grounding"], subquery.sources)
+            self.assertEqual(["reddit", "x", "grounding", "youtube", "hackernews"], subquery.sources)
 
     def test_default_how_to_keeps_youtube_in_source_mix(self):
         plan = planner.plan_query(
@@ -71,7 +116,19 @@ class PlannerV3Tests(unittest.TestCase):
             model=None,
         )
         self.assertEqual("how_to", plan.intent)
-        self.assertEqual(["grounding", "youtube", "reddit"], plan.subqueries[0].sources)
+        self.assertEqual(["reddit", "grounding", "youtube"], plan.subqueries[0].sources)
+
+    def test_default_how_to_prefers_longform_video_over_shortform(self):
+        plan = planner.plan_query(
+            topic="how to deploy on Fly.io",
+            available_sources=["reddit", "tiktok", "instagram", "grounding", "youtube", "hackernews"],
+            requested_sources=None,
+            depth="default",
+            provider=None,
+            model=None,
+        )
+        self.assertEqual("how_to", plan.intent)
+        self.assertEqual(["reddit", "grounding", "youtube"], plan.subqueries[0].sources)
 
 
 if __name__ == "__main__":

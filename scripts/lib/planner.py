@@ -1,4 +1,4 @@
-"""LLM-first query planning with a tiny local fallback."""
+"""LLM-first query planning with deterministic guards for risky queries."""
 
 from __future__ import annotations
 
@@ -59,6 +59,24 @@ SOURCE_LIMITS = {
         "prediction": 3,
     },
 }
+SOURCE_CAPABILITIES = {
+    "grounding": {"web", "reference"},
+    "reddit": {"discussion", "social"},
+    "x": {"discussion", "social"},
+    "youtube": {"video", "video_longform", "discussion"},
+    "tiktok": {"video", "video_shortform", "social"},
+    "instagram": {"video", "video_shortform", "social"},
+    "hackernews": {"discussion", "link"},
+    "bluesky": {"discussion", "social"},
+    "truthsocial": {"discussion", "social"},
+    "polymarket": {"market"},
+    "xiaohongshu": {"video", "video_shortform", "social"},
+}
+DEFAULT_INTENT_CAPABILITIES = {
+    "comparison": {"discussion", "video", "web", "reference", "social", "link"},
+    "how_to": {"discussion", "video", "web", "reference", "link"},
+}
+MAX_SUBQUERIES = 4
 
 
 def plan_query(
@@ -71,6 +89,14 @@ def plan_query(
     model: str | None,
 ) -> schema.QueryPlan:
     """Create a query plan, preferring the configured reasoning provider."""
+    if _should_force_deterministic_plan(topic):
+        return _fallback_plan(
+            topic,
+            available_sources,
+            requested_sources,
+            depth,
+            note="deterministic-comparison-plan",
+        )
     prompt = _build_prompt(topic, available_sources, requested_sources, depth)
     if provider and model:
         try:
@@ -118,7 +144,7 @@ Return JSON only with this shape:
 }}
 
 Rules:
-- emit 1 to 3 subqueries
+- emit 1 to 4 subqueries
 - every subquery must include both search_query and ranking_query
 - sources must be drawn from Available sources only
 - use cluster_mode=none for factual or many how-to queries
@@ -126,6 +152,7 @@ Rules:
 - use debate for comparison/opinion, market for prediction, workflow for how_to, story for breaking_news
 - search_query should be concise and keyword-heavy
 - ranking_query should read like a natural-language question
+- preserve exact proper nouns and entity strings from the topic
 """.strip()
 
 
@@ -136,8 +163,15 @@ def _sanitize_plan(
     requested_sources: list[str] | None,
     depth: str,
 ) -> schema.QueryPlan:
+    intent_hint = str(raw.get("intent") or _infer_intent(topic)).strip()
+    if intent_hint not in ALLOWED_INTENTS:
+        intent_hint = _infer_intent(topic)
     requested = set(requested_sources or [])
     available = set(available_sources)
+    eligible_sources = [
+        source for source in available_sources
+        if (not requested or source in requested)
+    ]
     source_weights = {
         source: float(weight)
         for source, weight in (raw.get("source_weights") or {}).items()
@@ -147,10 +181,13 @@ def _sanitize_plan(
         source_weights = {source: weight for source, weight in source_weights.items() if source in requested}
     if not source_weights:
         source_weights = _default_source_weights(_infer_intent(topic), available_sources)
+    elif depth == "default" and intent_hint in DEFAULT_INTENT_CAPABILITIES:
+        for source in _default_sources_for_intent(intent_hint, eligible_sources):
+            source_weights.setdefault(source, 1.0)
     source_weights = _normalize_weights(source_weights)
 
     subqueries: list[schema.SubQuery] = []
-    for index, subquery in enumerate((raw.get("subqueries") or [])[:3], start=1):
+    for index, subquery in enumerate((raw.get("subqueries") or [])[:_max_subqueries(intent_hint)], start=1):
         if not isinstance(subquery, dict):
             continue
         sources = [source for source in subquery.get("sources") or [] if source in source_weights]
@@ -176,10 +213,10 @@ def _sanitize_plan(
     if not subqueries:
         return _fallback_plan(topic, available_sources, requested_sources, depth)
 
-    intent = str(raw.get("intent") or _infer_intent(topic)).strip()
-    if intent not in ALLOWED_INTENTS:
-        intent = _infer_intent(topic)
+    intent = intent_hint
     freshness_mode = str(raw.get("freshness_mode") or _default_freshness(intent)).strip()
+    if intent == "how_to":
+        freshness_mode = "evergreen_ok"
     cluster_mode = str(raw.get("cluster_mode") or _default_cluster_mode(intent)).strip()
     if cluster_mode not in ALLOWED_CLUSTER_MODES:
         cluster_mode = _default_cluster_mode(intent)
@@ -189,7 +226,7 @@ def _sanitize_plan(
         freshness_mode=freshness_mode,
         cluster_mode=cluster_mode,
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(_trim_subqueries_for_depth(subqueries, intent, depth, list(source_weights))),
+        subqueries=_normalize_subquery_weights(_trim_subqueries_for_depth(subqueries, intent, depth, eligible_sources)),
         source_weights=source_weights,
         notes=[str(note).strip() for note in raw.get("notes") or [] if str(note).strip()],
     )
@@ -226,6 +263,18 @@ def _trim_subqueries_for_depth(
     limits = SOURCE_LIMITS.get(depth)
     if not limits:
         return subqueries
+    if depth == "default" and intent in DEFAULT_INTENT_CAPABILITIES:
+        expanded_sources = _default_sources_for_intent(intent, available_sources)
+        return [
+            schema.SubQuery(
+                label=subquery.label,
+                search_query=subquery.search_query,
+                ranking_query=subquery.ranking_query,
+                sources=expanded_sources,
+                weight=subquery.weight,
+            )
+            for subquery in subqueries
+        ]
     priority_table = QUICK_SOURCE_PRIORITY if depth == "quick" else SOURCE_PRIORITY
     priority = priority_table.get(intent, priority_table["breaking_news"])
     limit = limits.get(intent, 3)
@@ -262,6 +311,7 @@ def _fallback_plan(
     available_sources: list[str],
     requested_sources: list[str] | None,
     depth: str,
+    note: str = "fallback-plan",
 ) -> schema.QueryPlan:
     intent = _infer_intent(topic)
     allowed_sources = requested_sources or available_sources
@@ -281,11 +331,11 @@ def _fallback_plan(
     if depth != "quick" and intent == "comparison":
         entities = _comparison_entities(topic)
         if entities:
-            for index, entity in enumerate(entities[:2], start=1):
+            for index, entity in enumerate(entities, start=1):
                 subqueries.append(
                     schema.SubQuery(
                         label=f"entity-{index}",
-                        search_query=query.extract_core_subject(entity, max_words=4) or entity,
+                        search_query=entity,
                         ranking_query=f"What recent evidence from the last 30 days is most relevant to {entity} in the comparison '{topic}'?",
                         sources=list(source_weights),
                         weight=0.65,
@@ -317,15 +367,20 @@ def _fallback_plan(
         freshness_mode=_default_freshness(intent),
         cluster_mode=_default_cluster_mode(intent),
         raw_topic=topic,
-        subqueries=_normalize_subquery_weights(_trim_subqueries_for_depth(subqueries[:3], intent, depth, list(source_weights))),
+        subqueries=_normalize_subquery_weights(
+            _trim_subqueries_for_depth(subqueries[:_max_subqueries(intent)], intent, depth, list(source_weights))
+        ),
         source_weights=_normalize_weights(source_weights),
-        notes=["fallback-plan"],
+        notes=[note],
     )
 
 
 def _infer_intent(topic: str) -> str:
     text = topic.lower().strip()
     if re.search(r"\b(vs|versus|compare|compared to|difference between)\b", text):
+        return "comparison"
+    # Slash-separated capitalized words: "React/Vue/Svelte" (but not URLs)
+    if not re.search(r"https?://", topic) and re.search(r"\b[A-Za-z]+/[A-Za-z]+\b", topic):
         return "comparison"
     if re.search(r"\b(odds|predict|prediction|forecast|chance|probability|will .* win)\b", text):
         return "prediction"
@@ -401,9 +456,84 @@ def _ranking_query(topic: str, core: str) -> str:
     return f"What recent evidence from the last 30 days is most relevant to {topic}?"
 
 
+_TRAILING_CONTEXT = re.compile(
+    r"\s+\b(?:for|in|on|at|to|with|about|from|by|during|since|after|before|using|via)\b.*$",
+    re.I,
+)
+
+
 def _comparison_entities(topic: str) -> list[str]:
-    normalized = re.sub(r"\b(compared to|difference between)\b", " vs ", topic, flags=re.I)
-    parts = [part.strip(" ?") for part in re.split(r"\bvs\b|/", normalized, flags=re.I) if part.strip(" ?")]
+    # "difference between X and Y" -> "X vs Y" (replace "and" only in this context)
+    normalized = re.sub(
+        r"\bdifference between\s+(.+?)\s+and\s+",
+        r"\1 vs ",
+        topic,
+        flags=re.I,
+    )
+    normalized = re.sub(r"\b(compared to)\b", " vs ", normalized, flags=re.I)
+    parts = [
+        part.strip(" \t\r\n?.,:;!()[]{}\"'")
+        for part in re.split(r"\bvs\.?\b|\bversus\b|/", normalized, flags=re.I)
+        if part.strip(" \t\r\n?.,:;!()[]{}\"'")
+    ]
+    # Strip trailing context from parts ("Svelte for frontend in 2026" -> "Svelte")
     if len(parts) >= 2:
-        return parts[:2]
+        parts = [_TRAILING_CONTEXT.sub("", part).strip() or part for part in parts]
+        deduped = []
+        for part in parts:
+            if part and part not in deduped:
+                deduped.append(part)
+        return deduped[:_max_subqueries("comparison")]
     return []
+
+
+def _should_force_deterministic_plan(topic: str) -> bool:
+    return _infer_intent(topic) == "comparison" and len(_comparison_entities(topic)) >= 2
+
+
+def _max_subqueries(intent: str) -> int:
+    return MAX_SUBQUERIES if intent == "comparison" else 3
+
+
+def _default_sources_for_intent(intent: str, available_sources: list[str]) -> list[str]:
+    if intent == "comparison":
+        target_capabilities = DEFAULT_INTENT_CAPABILITIES.get(intent)
+        matched = [
+            source
+            for source in available_sources
+            if SOURCE_CAPABILITIES.get(source, set()) & (target_capabilities or set())
+        ]
+        return matched or list(available_sources)
+
+    if intent == "how_to":
+        selected: set[str] = set()
+        capability_groups = [
+            ({"web", "reference"}, True),
+            ({"video_longform"}, False),
+            ({"video"}, False),
+            ({"discussion"}, True),
+        ]
+        for group, required in capability_groups:
+            if not required and selected & {
+                source for source in available_sources if SOURCE_CAPABILITIES.get(source, set()) & {"video", "video_longform"}
+            }:
+                continue
+            for source in available_sources:
+                if source in selected:
+                    continue
+                if SOURCE_CAPABILITIES.get(source, set()) & group:
+                    selected.add(source)
+                    break
+        if not selected:
+            return list(available_sources)
+        return [source for source in available_sources if source in selected]
+
+    target_capabilities = DEFAULT_INTENT_CAPABILITIES.get(intent)
+    if not target_capabilities:
+        return list(available_sources)
+    matched = [
+        source
+        for source in available_sources
+        if SOURCE_CAPABILITIES.get(source, set()) & target_capabilities
+    ]
+    return matched or list(available_sources)
