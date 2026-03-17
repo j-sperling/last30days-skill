@@ -1,0 +1,371 @@
+"""Unit tests for untested internal functions across rerank, render, planner, and signals.
+
+These pin the correct behavior of core building blocks that higher-level
+tests exercise transitively but don't assert on directly. A regression in
+any of these functions would silently degrade output quality.
+"""
+
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from lib import planner, rerank, render, signals, schema
+
+
+def _item(source: str = "reddit", **kwargs) -> schema.SourceItem:
+    defaults = dict(
+        item_id="t1", source=source, title="Test Title", body="Test body",
+        url="https://example.com", engagement={}, metadata={},
+    )
+    defaults.update(kwargs)
+    return schema.SourceItem(**defaults)
+
+
+def _candidate(source: str = "reddit", **kwargs) -> schema.Candidate:
+    defaults = dict(
+        candidate_id="c1", item_id="t1", source=source, title="Test",
+        url="https://example.com", snippet="snippet", subquery_labels=["primary"],
+        native_ranks={"primary": 1}, local_relevance=0.5, freshness=50,
+        engagement=50, source_quality=0.7, rrf_score=0.01, sources=[source],
+        source_items=[],
+    )
+    defaults.update(kwargs)
+    return schema.Candidate(**defaults)
+
+
+# ---------------------------------------------------------------------------
+# rerank._fallback_tuple
+# ---------------------------------------------------------------------------
+
+class TestFallbackTuple(unittest.TestCase):
+
+    def test_returns_score_and_explanation(self):
+        c = _candidate(local_relevance=0.8, freshness=80, source_quality=0.7)
+        score, explanation = rerank._fallback_tuple(c)
+        self.assertIsInstance(score, float)
+        self.assertEqual(explanation, "fallback-local-score")
+
+    def test_score_clamped_to_0_100(self):
+        c = _candidate(local_relevance=2.0, freshness=200, source_quality=2.0)
+        score, _ = rerank._fallback_tuple(c)
+        self.assertLessEqual(score, 100.0)
+        self.assertGreaterEqual(score, 0.0)
+
+    def test_higher_relevance_gives_higher_score(self):
+        high = _candidate(local_relevance=0.9, freshness=50, source_quality=0.7)
+        low = _candidate(local_relevance=0.1, freshness=50, source_quality=0.7)
+        self.assertGreater(rerank._fallback_tuple(high)[0], rerank._fallback_tuple(low)[0])
+
+
+# ---------------------------------------------------------------------------
+# rerank._normalized_rrf
+# ---------------------------------------------------------------------------
+
+class TestNormalizedRrf(unittest.TestCase):
+
+    def test_zero_input(self):
+        self.assertAlmostEqual(rerank._normalized_rrf(0.0), 0.0)
+
+    def test_positive_input(self):
+        result = rerank._normalized_rrf(0.04)
+        self.assertGreater(result, 0.0)
+        self.assertLessEqual(result, 100.0)
+
+    def test_clamped_at_100(self):
+        result = rerank._normalized_rrf(1.0)
+        self.assertLessEqual(result, 100.0)
+
+
+# ---------------------------------------------------------------------------
+# render._assess_data_freshness
+# ---------------------------------------------------------------------------
+
+class TestAssessDataFreshness(unittest.TestCase):
+
+    def _report(self, items_by_source: dict) -> schema.Report:
+        return schema.Report(
+            topic="test", range_from="2026-02-15", range_to="2026-03-17",
+            generated_at="2026-03-17T00:00:00Z",
+            provider_runtime=schema.ProviderRuntime(
+                reasoning_provider="test", planner_model="test",
+                rerank_model="test", grounding_model="test",
+            ),
+            query_plan=schema.QueryPlan(
+                intent="comparison", freshness_mode="balanced_recent",
+                cluster_mode="debate", raw_topic="test", subqueries=[],
+                source_weights={},
+            ),
+            clusters=[], ranked_candidates=[],
+            items_by_source=items_by_source, errors_by_source={},
+        )
+
+    def test_no_items_returns_warning(self):
+        report = self._report({})
+        result = render._assess_data_freshness(report)
+        self.assertIsNotNone(result)
+        self.assertIn("Limited", result)
+
+    def test_all_old_items_returns_warning(self):
+        items = [_item(published_at="2026-01-01") for _ in range(10)]
+        report = self._report({"reddit": items})
+        result = render._assess_data_freshness(report)
+        self.assertIsNotNone(result)
+
+    def test_many_recent_items_returns_none(self):
+        items = [_item(published_at="2026-03-16") for _ in range(10)]
+        report = self._report({"reddit": items})
+        result = render._assess_data_freshness(report)
+        self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# render._format_date
+# ---------------------------------------------------------------------------
+
+class TestFormatDate(unittest.TestCase):
+
+    def test_high_confidence_clean(self):
+        item = _item(published_at="2026-03-10", date_confidence="high")
+        self.assertEqual(render._format_date(item), "2026-03-10")
+
+    def test_low_confidence_tagged(self):
+        item = _item(published_at="2026-03-10", date_confidence="low")
+        self.assertIn("date:low", render._format_date(item))
+
+    def test_none_item(self):
+        self.assertIn("unknown", render._format_date(None).lower())
+
+
+# ---------------------------------------------------------------------------
+# render._format_actor
+# ---------------------------------------------------------------------------
+
+class TestFormatActor(unittest.TestCase):
+
+    def test_reddit_subreddit(self):
+        item = _item(source="reddit", container="python")
+        self.assertEqual(render._format_actor(item), "r/python")
+
+    def test_x_handle(self):
+        item = _item(source="x", author="karpathy")
+        self.assertEqual(render._format_actor(item), "@karpathy")
+
+    def test_youtube_channel(self):
+        item = _item(source="youtube", author="Fireship")
+        self.assertEqual(render._format_actor(item), "Fireship")
+
+
+# ---------------------------------------------------------------------------
+# render._format_engagement
+# ---------------------------------------------------------------------------
+
+class TestFormatEngagement(unittest.TestCase):
+
+    def test_reddit_format(self):
+        item = _item(engagement={"score": 344, "num_comments": 119})
+        result = render._format_engagement(item)
+        self.assertIn("344", result)
+        self.assertIn("pts", result)
+
+    def test_empty_engagement(self):
+        item = _item(engagement={})
+        self.assertIsNone(render._format_engagement(item))
+
+
+# ---------------------------------------------------------------------------
+# render._format_corroboration
+# ---------------------------------------------------------------------------
+
+class TestFormatCorroboration(unittest.TestCase):
+
+    def test_multi_source(self):
+        c = _candidate(sources=["reddit", "x", "hackernews"])
+        result = render._format_corroboration(c)
+        self.assertIn("Also on", result)
+        self.assertIn("X", result)
+
+    def test_single_source_none(self):
+        c = _candidate(sources=["reddit"])
+        self.assertIsNone(render._format_corroboration(c))
+
+
+# ---------------------------------------------------------------------------
+# render._format_explanation
+# ---------------------------------------------------------------------------
+
+class TestFormatExplanation(unittest.TestCase):
+
+    def test_hides_fallback_sentinel(self):
+        c = _candidate(explanation="fallback-local-score")
+        self.assertIsNone(render._format_explanation(c))
+
+    def test_shows_real_explanation(self):
+        c = _candidate(explanation="Directly compares frameworks")
+        self.assertEqual(render._format_explanation(c), "Directly compares frameworks")
+
+
+# ---------------------------------------------------------------------------
+# render._fmt_pairs and _format_number
+# ---------------------------------------------------------------------------
+
+class TestFmtPairs(unittest.TestCase):
+
+    def test_basic(self):
+        self.assertEqual(render._fmt_pairs([(120, "pts"), (48, "cmt")]), "120pts, 48cmt")
+
+    def test_skips_none_and_zero(self):
+        self.assertEqual(render._fmt_pairs([(None, "pts"), (0, "cmt"), (5, "re")]), "5re")
+
+    def test_large_numbers(self):
+        self.assertIn("94,200", render._fmt_pairs([(94200, "views")]))
+
+
+class TestFormatNumber(unittest.TestCase):
+
+    def test_comma_thousands(self):
+        self.assertEqual(render._format_number(94200), "94,200")
+
+    def test_small_integer(self):
+        self.assertEqual(render._format_number(42), "42")
+
+
+# ---------------------------------------------------------------------------
+# render._truncate
+# ---------------------------------------------------------------------------
+
+class TestTruncate(unittest.TestCase):
+
+    def test_short_text(self):
+        self.assertEqual(render._truncate("hello", 100), "hello")
+
+    def test_long_text_has_ellipsis(self):
+        result = render._truncate("a" * 200, 50)
+        self.assertTrue(result.endswith("..."))
+        self.assertEqual(len(result), 50)
+
+
+# ---------------------------------------------------------------------------
+# planner._normalize_subquery_weights
+# ---------------------------------------------------------------------------
+
+class TestNormalizeSubqueryWeights(unittest.TestCase):
+
+    def test_sums_to_one(self):
+        sqs = [
+            schema.SubQuery(label="a", search_query="a", ranking_query="a?", sources=["r"], weight=3.0),
+            schema.SubQuery(label="b", search_query="b", ranking_query="b?", sources=["r"], weight=1.0),
+        ]
+        normed = planner._normalize_subquery_weights(sqs)
+        total = sum(sq.weight for sq in normed)
+        self.assertAlmostEqual(total, 1.0)
+
+    def test_preserves_ratio(self):
+        sqs = [
+            schema.SubQuery(label="a", search_query="a", ranking_query="a?", sources=["r"], weight=4.0),
+            schema.SubQuery(label="b", search_query="b", ranking_query="b?", sources=["r"], weight=1.0),
+        ]
+        normed = planner._normalize_subquery_weights(sqs)
+        self.assertAlmostEqual(normed[0].weight / normed[1].weight, 4.0)
+
+
+# ---------------------------------------------------------------------------
+# planner._normalize_weights
+# ---------------------------------------------------------------------------
+
+class TestNormalizeWeights(unittest.TestCase):
+
+    def test_sums_to_one(self):
+        result = planner._normalize_weights({"a": 3.0, "b": 1.0})
+        self.assertAlmostEqual(sum(result.values()), 1.0)
+
+    def test_negative_clamped_to_zero(self):
+        result = planner._normalize_weights({"a": 2.0, "b": -1.0})
+        self.assertAlmostEqual(result["b"], 0.0)
+
+
+# ---------------------------------------------------------------------------
+# planner._trim_subqueries_for_depth
+# ---------------------------------------------------------------------------
+
+class TestTrimSubqueriesForDepth(unittest.TestCase):
+
+    def _sq(self, label: str = "primary", sources: list[str] = None) -> schema.SubQuery:
+        return schema.SubQuery(
+            label=label, search_query="test", ranking_query="test?",
+            sources=sources or ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
+            weight=1.0,
+        )
+
+    def test_quick_limits_sources(self):
+        sqs = [self._sq()]
+        result = planner._trim_subqueries_for_depth(sqs, "comparison", "quick", ["reddit", "x", "grounding"])
+        self.assertLessEqual(len(result[0].sources), 2)
+
+    def test_default_comparison_expands_via_capabilities(self):
+        available = ["reddit", "x", "grounding", "youtube", "hackernews", "tiktok", "instagram"]
+        sqs = [self._sq(sources=available)]
+        result = planner._trim_subqueries_for_depth(sqs, "comparison", "default", available)
+        # Comparison should use all capability-matched sources, not top-3
+        self.assertGreater(len(result[0].sources), 3)
+
+    def test_deep_passes_through(self):
+        sqs = [self._sq()]
+        result = planner._trim_subqueries_for_depth(sqs, "comparison", "deep", sqs[0].sources)
+        self.assertEqual(result, sqs)
+
+
+# ---------------------------------------------------------------------------
+# signals.annotate_stream
+# ---------------------------------------------------------------------------
+
+class TestAnnotateStream(unittest.TestCase):
+
+    def test_attaches_metadata(self):
+        items = [
+            _item(engagement={"score": 100, "num_comments": 50, "upvote_ratio": 0.9}),
+        ]
+        annotated = signals.annotate_stream(items, "test query", "balanced_recent")
+        meta = annotated[0].metadata
+        self.assertIn("local_relevance", meta)
+        self.assertIn("freshness", meta)
+        self.assertIn("engagement_score", meta)
+        self.assertIn("source_quality", meta)
+        self.assertIn("local_rank_score", meta)
+
+    def test_sorted_by_local_rank_score(self):
+        items = [
+            _item(item_id="low", title="irrelevant stuff", engagement={}),
+            _item(item_id="high", title="test query exact match test query", engagement={"score": 500, "num_comments": 200}),
+        ]
+        annotated = signals.annotate_stream(items, "test query", "balanced_recent")
+        self.assertEqual(annotated[0].item_id, "high")
+
+
+# ---------------------------------------------------------------------------
+# signals.prune_low_relevance
+# ---------------------------------------------------------------------------
+
+class TestPruneLowRelevance(unittest.TestCase):
+
+    def test_removes_low_relevance_items(self):
+        items = [
+            _item(item_id="good"),
+            _item(item_id="bad"),
+        ]
+        items[0].metadata["local_relevance"] = 0.8
+        items[1].metadata["local_relevance"] = 0.01
+        result = signals.prune_low_relevance(items, minimum=0.1)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].item_id, "good")
+
+    def test_keeps_all_if_all_below_minimum(self):
+        items = [_item(item_id="only")]
+        items[0].metadata["local_relevance"] = 0.05
+        result = signals.prune_low_relevance(items, minimum=0.1)
+        self.assertEqual(len(result), 1)  # fallback keeps all
+
+
+if __name__ == "__main__":
+    unittest.main()
