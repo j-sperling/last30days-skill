@@ -162,7 +162,7 @@ def parse_hackernews_response(response: Dict[str, Any], query: str = "") -> List
             "date": date_str,
             "engagement": {
                 "points": points,
-                "num_comments": num_comments,
+                "comments": num_comments,
             },
             "relevance": round(relevance, 2),
             "why_relevant": f"HN story about {hit.get('title', 'topic')[:60]}",
