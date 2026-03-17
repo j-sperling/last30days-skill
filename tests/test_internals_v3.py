@@ -114,7 +114,9 @@ class TestAssessDataFreshness(unittest.TestCase):
         self.assertIsNotNone(result)
 
     def test_many_recent_items_returns_none(self):
-        items = [_item(published_at="2026-03-16") for _ in range(10)]
+        from datetime import date
+        today = date.today().isoformat()
+        items = [_item(published_at=today) for _ in range(10)]
         report = self._report({"reddit": items})
         result = render._assess_data_freshness(report)
         self.assertIsNone(result)

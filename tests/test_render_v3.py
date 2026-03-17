@@ -106,6 +106,14 @@ class RenderV3Tests(unittest.TestCase):
         self.assertIn("Top clusters:", text)
         self.assertIn("Grounded result", text)
 
+    def test_render_compact_includes_source_errors_section(self):
+        report = sample_report()
+        report.errors_by_source = {"x": "HTTP 400: Bad Request"}
+        text = render.render_compact(report)
+        self.assertIn("## Source Errors", text)
+        self.assertIn("HTTP 400: Bad Request", text)
+        self.assertIn("X:", text)
+
 
 if __name__ == "__main__":
     unittest.main()
