@@ -20,7 +20,7 @@
       "owned_by": "openai"
     },
     {
-      "id": "gpt-5-mini",
+      "id": "gpt-5.4-mini",
       "object": "model",
       "created": 1704067200,
       "owned_by": "openai"
