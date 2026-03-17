@@ -130,8 +130,8 @@ def _final_score(candidate: schema.Candidate) -> float:
     normalized_rrf = _normalized_rrf(candidate.rrf_score)
     rerank_score = candidate.rerank_score or 0.0
     base = (
-        0.60 * rerank_score
-        + 0.25 * normalized_rrf
+        0.65 * rerank_score
+        + 0.20 * normalized_rrf
         + 0.10 * candidate.freshness
         + 0.05 * (candidate.source_quality * 100.0)
     )

@@ -523,6 +523,24 @@ class TestDefaultDepthDoesNotCapSources(unittest.TestCase):
 
 
 
+class TestRerankWeightBalance(unittest.TestCase):
+    """Reranker weight must dominate over RRF when candidates have divergent quality."""
+
+    def test_rerank_gap_dominates_with_identical_rrf(self):
+        """Two candidates with identical RRF but rerank_scores of 80 and 40 should have a final_score gap of at least 25."""
+        high = _candidate(rrf_score=0.03, freshness=50, source_quality=0.7)
+        high.rerank_score = 80.0
+        high.final_score = rerank._final_score(high)
+
+        low = _candidate(rrf_score=0.03, freshness=50, source_quality=0.7)
+        low.rerank_score = 40.0
+        low.final_score = rerank._final_score(low)
+
+        gap = high.final_score - low.final_score
+        self.assertGreaterEqual(gap, 25.0,
+                                f"Rerank gap should be >= 25 points, got {gap:.1f}")
+
+
 class TestXaiModelDefault(unittest.TestCase):
     """XAI_DEFAULT must be a model that xAI's API actually accepts."""
 
