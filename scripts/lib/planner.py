@@ -540,6 +540,12 @@ def _how_to_sources(available_sources: list[str]) -> list[str]:
                 if is_video_role:
                     has_video = True
                 break
+    # After core role-based selection, include remaining sources with any
+    # how_to-relevant capability (video, discussion, web, reference, link).
+    how_to_caps = DEFAULT_INTENT_CAPABILITIES.get("how_to", set())
+    for source in available_sources:
+        if source not in selected and SOURCE_CAPABILITIES.get(source, set()) & how_to_caps:
+            selected.add(source)
     if not selected:
         return list(available_sources)
     return [source for source in available_sources if source in selected]

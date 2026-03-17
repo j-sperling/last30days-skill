@@ -126,6 +126,26 @@ class PlannerV3Tests(unittest.TestCase):
         self.assertIn("reddit", sources)
         self.assertIn("grounding", sources)
 
+    def test_how_to_sources_includes_capability_matched_extras(self):
+        """how_to routing should include additional sources beyond the core 3."""
+        plan = planner.plan_query(
+            topic="how to deploy on Fly.io",
+            available_sources=["reddit", "tiktok", "instagram", "grounding", "youtube", "hackernews"],
+            requested_sources=None,
+            depth="default",
+            provider=None,
+            model=None,
+        )
+        self.assertEqual("how_to", plan.intent)
+        sources = plan.subqueries[0].sources
+        # Core sources must be present
+        self.assertIn("grounding", sources)
+        self.assertIn("youtube", sources)
+        self.assertIn("reddit", sources)
+        # Additional capability-matched sources should also be included
+        self.assertGreater(len(sources), 3,
+                           f"how_to should include >3 sources, got {len(sources)}: {sources}")
+
     def test_default_how_to_prefers_longform_video_over_shortform(self):
         plan = planner.plan_query(
             topic="how to deploy on Fly.io",
