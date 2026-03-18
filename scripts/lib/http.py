@@ -2,11 +2,12 @@
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from urllib.parse import urlencode
 
 DEFAULT_TIMEOUT = 30
@@ -21,7 +22,7 @@ def log(msg: str):
 MAX_RETRIES = 5
 MAX_429_RETRIES = 2
 RETRY_DELAY = 2.0
-USER_AGENT = "last30days-skill/2.1 (Assistant Skill)"
+USER_AGENT = "last30days-skill/3.0 (Assistant Skill)"
 
 
 class HTTPError(Exception):
@@ -41,7 +42,7 @@ def request(
     retries: int = MAX_RETRIES,
     max_429_retries: int = MAX_429_RETRIES,
     raw: bool = False,
-) -> Dict[str, Any]:
+) -> Union[Dict[str, Any], str]:
     """Make an HTTP request and return JSON response.
 
     Args:
@@ -51,9 +52,11 @@ def request(
         json_data: Optional JSON body (for POST)
         timeout: Request timeout in seconds
         retries: Number of retries on failure
+        max_429_retries: Maximum 429 retries before giving up (separate cap)
+        raw: If True, return raw response text instead of parsed JSON
 
     Returns:
-        Parsed JSON response (or raw text if raw=True)
+        Parsed JSON response as dict, or raw text string if raw=True.
 
     Raises:
         HTTPError: On request failure
@@ -68,7 +71,8 @@ def request(
 
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
-    log(f"{method} {url}")
+    safe_url = re.sub(r'([?&])(key|api_key|token|secret)=[^&]*', r'\1\2=***', url)
+    log(f"{method} {safe_url}")
 
     last_error = None
     rate_limit_count = 0
@@ -84,7 +88,7 @@ def request(
             body = None
             try:
                 body = e.read().decode('utf-8')
-            except:
+            except (OSError, UnicodeDecodeError):
                 pass
             log(f"HTTP Error {e.code}: {e.reason}")
             if body:
@@ -112,7 +116,7 @@ def request(
                         except ValueError:
                             delay = RETRY_DELAY * (2 ** attempt) + 1
                     else:
-                        delay = RETRY_DELAY * (2 ** attempt) + 1  # 2s, 5s, 9s...
+                        delay = RETRY_DELAY * (2 ** attempt) + 1  # 3s, 5s, 9s...
                     log(f"Rate limited (429). Waiting {delay:.1f}s before retry {attempt + 2}/{retries}")
                 else:
                     delay = RETRY_DELAY * (2 ** attempt)

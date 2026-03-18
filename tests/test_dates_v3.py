@@ -26,7 +26,7 @@ class DatesV3Tests(unittest.TestCase):
         self.assertEqual("2026-03-16T12:34:56+00:00", zulu.isoformat())
 
         fractional = dates.parse_date("2026-03-16T12:34:56.123456+02:00")
-        self.assertEqual("2026-03-16T12:34:56.123456+00:00", fractional.isoformat())
+        self.assertEqual("2026-03-16T10:34:56.123456+00:00", fractional.isoformat())
 
     def test_parse_date_rejects_empty_and_invalid_values(self):
         self.assertIsNone(dates.parse_date(None))

@@ -1,12 +1,16 @@
 """Environment and API key management for last30days skill."""
 
+from __future__ import annotations
+
 import base64
+import binascii
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, Literal
+from typing import Any, Literal
 
 # Allow override via environment variable for testing
 # Set LAST30DAYS_CONFIG_DIR="" for clean/no-config mode
@@ -40,10 +44,10 @@ AUTH_STATUS_MISSING_ACCOUNT_ID: AuthStatus = "missing_account_id"
 
 @dataclass(frozen=True)
 class OpenAIAuth:
-    token: Optional[str]
+    token: str | None
     source: AuthSource
     status: AuthStatus
-    account_id: Optional[str]
+    account_id: str | None
     codex_auth_file: str
 
 
@@ -53,17 +57,17 @@ def _check_file_permissions(path: Path) -> None:
         mode = path.stat().st_mode
         # Check if group or other can read (bits 0o044)
         if mode & 0o044:
-            import sys
             sys.stderr.write(
                 f"[last30days] WARNING: {path} is readable by other users. "
                 f"Run: chmod 600 {path}\n"
             )
             sys.stderr.flush()
-    except OSError:
-        pass
+    except OSError as exc:
+        sys.stderr.write(f"[last30days] WARNING: could not stat {path}: {exc}\n")
+        sys.stderr.flush()
 
 
-def load_env_file(path: Path) -> Dict[str, str]:
+def load_env_file(path: Path) -> dict[str, str]:
     """Load environment variables from a file."""
     env = {}
     if not path or not path.exists():
@@ -87,7 +91,7 @@ def load_env_file(path: Path) -> Dict[str, str]:
     return env
 
 
-def _decode_jwt_payload(token: str) -> Optional[Dict[str, Any]]:
+def _decode_jwt_payload(token: str) -> dict[str, Any] | None:
     """Decode JWT payload without verification."""
     try:
         parts = token.split(".")
@@ -97,7 +101,9 @@ def _decode_jwt_payload(token: str) -> Optional[Dict[str, Any]]:
         pad = "=" * (-len(payload_b64) % 4)
         decoded = base64.urlsafe_b64decode(payload_b64 + pad)
         return json.loads(decoded.decode("utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, UnicodeDecodeError, binascii.Error, IndexError) as exc:
+        sys.stderr.write(f"[last30days] WARNING: malformed JWT token: {exc}\n")
+        sys.stderr.flush()
         return None
 
 
@@ -112,7 +118,7 @@ def _token_expired(token: str, leeway_seconds: int = 60) -> bool:
     return exp <= (time.time() + leeway_seconds)
 
 
-def extract_chatgpt_account_id(access_token: str) -> Optional[str]:
+def extract_chatgpt_account_id(access_token: str) -> str | None:
     """Extract chatgpt_account_id from JWT token."""
     payload = _decode_jwt_payload(access_token)
     if not payload:
@@ -123,18 +129,22 @@ def extract_chatgpt_account_id(access_token: str) -> Optional[str]:
     return None
 
 
-def load_codex_auth(path: Path = CODEX_AUTH_FILE) -> Dict[str, Any]:
+def load_codex_auth(path: Path = CODEX_AUTH_FILE) -> dict[str, Any]:
     """Load Codex auth JSON."""
     if not path.exists():
         return {}
     try:
         with open(path, "r") as f:
             return json.load(f)
-    except Exception:
+    except json.JSONDecodeError:
+        sys.stderr.write(
+            f"[last30days] WARNING: {path} exists but contains invalid JSON -- ignoring\n"
+        )
+        sys.stderr.flush()
         return {}
 
 
-def get_codex_access_token() -> tuple[Optional[str], str]:
+def get_codex_access_token() -> tuple[str | None, str]:
     """Get Codex access token from auth.json.
 
     Returns:
@@ -155,7 +165,7 @@ def get_codex_access_token() -> tuple[Optional[str], str]:
     return token, AUTH_STATUS_OK
 
 
-def get_openai_auth(file_env: Dict[str, str]) -> OpenAIAuth:
+def get_openai_auth(file_env: dict[str, str]) -> OpenAIAuth:
     """Resolve OpenAI auth from API key or Codex login."""
     api_key = os.environ.get('OPENAI_API_KEY') or file_env.get('OPENAI_API_KEY')
     if api_key:
@@ -195,7 +205,7 @@ def get_openai_auth(file_env: Dict[str, str]) -> OpenAIAuth:
     )
 
 
-def _find_project_env() -> Optional[Path]:
+def _find_project_env() -> Path | None:
     """Find per-project .env by walking up from cwd.
 
     Searches for .claude/last30days.env in each parent directory,
@@ -212,7 +222,7 @@ def _find_project_env() -> Optional[Path]:
     return None
 
 
-def get_config() -> Dict[str, Any]:
+def get_config() -> dict[str, Any]:
     """Load configuration from multiple sources.
 
     Priority (highest wins):
@@ -287,7 +297,7 @@ def config_exists() -> bool:
     return False
 
 
-def is_reddit_available(config: Dict[str, Any]) -> bool:
+def is_reddit_available(config: dict[str, Any]) -> bool:
     """Check if Reddit search is available.
 
     v3 uses ScrapeCreators only.
@@ -295,7 +305,7 @@ def is_reddit_available(config: Dict[str, Any]) -> bool:
     return bool(config.get('SCRAPECREATORS_API_KEY'))
 
 
-def get_reddit_source(config: Dict[str, Any]) -> Optional[str]:
+def get_reddit_source(config: dict[str, Any]) -> str | None:
     """Determine which Reddit backend to use.
 
     Returns: 'scrapecreators' or None
@@ -305,7 +315,7 @@ def get_reddit_source(config: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def get_x_source(config: Dict[str, Any]) -> Optional[str]:
+def get_x_source(config: dict[str, Any]) -> str | None:
     """Determine the best available explicit X/Twitter source.
 
     Priority: explicit backend pin, then xAI, then Bird with explicit cookies.
@@ -357,7 +367,7 @@ def is_hackernews_available() -> bool:
     return True
 
 
-def is_bluesky_available(config: Dict[str, Any]) -> bool:
+def is_bluesky_available(config: dict[str, Any]) -> bool:
     """Check if Bluesky source is available.
 
     Requires BSKY_HANDLE and BSKY_APP_PASSWORD (app password from bsky.app/settings).
@@ -365,7 +375,7 @@ def is_bluesky_available(config: Dict[str, Any]) -> bool:
     return bool(config.get('BSKY_HANDLE') and config.get('BSKY_APP_PASSWORD'))
 
 
-def is_truthsocial_available(config: Dict[str, Any]) -> bool:
+def is_truthsocial_available(config: dict[str, Any]) -> bool:
     """Check if Truth Social source is available.
 
     Requires TRUTHSOCIAL_TOKEN (bearer token from browser dev tools).
@@ -381,7 +391,7 @@ def is_polymarket_available() -> bool:
     return True
 
 
-def is_tiktok_available(config: Dict[str, Any]) -> bool:
+def is_tiktok_available(config: dict[str, Any]) -> bool:
     """Check if TikTok source is available (ScrapeCreators or legacy Apify).
 
     Returns True if SCRAPECREATORS_API_KEY or APIFY_API_TOKEN is set.
@@ -389,12 +399,12 @@ def is_tiktok_available(config: Dict[str, Any]) -> bool:
     return bool(config.get('SCRAPECREATORS_API_KEY') or config.get('APIFY_API_TOKEN'))
 
 
-def get_tiktok_token(config: Dict[str, Any]) -> str:
+def get_tiktok_token(config: dict[str, Any]) -> str:
     """Get TikTok API token, preferring ScrapeCreators over legacy Apify."""
     return config.get('SCRAPECREATORS_API_KEY') or config.get('APIFY_API_TOKEN') or ''
 
 
-def is_instagram_available(config: Dict[str, Any]) -> bool:
+def is_instagram_available(config: dict[str, Any]) -> bool:
     """Check if Instagram source is available (ScrapeCreators).
 
     Returns True if SCRAPECREATORS_API_KEY is set.
@@ -403,12 +413,12 @@ def is_instagram_available(config: Dict[str, Any]) -> bool:
     return bool(config.get('SCRAPECREATORS_API_KEY'))
 
 
-def get_instagram_token(config: Dict[str, Any]) -> str:
+def get_instagram_token(config: dict[str, Any]) -> str:
     """Get Instagram API token (same ScrapeCreators key as TikTok)."""
     return config.get('SCRAPECREATORS_API_KEY') or ''
 
 
-def get_xiaohongshu_api_base(config: Dict[str, Any]) -> str:
+def get_xiaohongshu_api_base(config: dict[str, Any]) -> str:
     """Get Xiaohongshu HTTP API base URL.
 
     Defaults to host.docker.internal so OpenClaw Docker can reach host service.
@@ -416,7 +426,7 @@ def get_xiaohongshu_api_base(config: Dict[str, Any]) -> str:
     return (config.get('XIAOHONGSHU_API_BASE') or "http://host.docker.internal:18060").rstrip("/")
 
 
-def is_xiaohongshu_available(config: Dict[str, Any]) -> bool:
+def is_xiaohongshu_available(config: dict[str, Any]) -> bool:
     """Check whether Xiaohongshu HTTP API is reachable and logged in."""
     # Import here to avoid heavy imports at module load.
     from . import http
@@ -438,7 +448,14 @@ def is_xiaohongshu_available(config: Dict[str, Any]) -> bool:
             if isinstance(login, dict) else False
         )
         return bool(is_logged_in)
-    except Exception:
+    except (OSError, http.HTTPError):
+        return False
+    except Exception as exc:
+        sys.stderr.write(
+            f"[last30days] WARNING: unexpected error checking Xiaohongshu: "
+            f"{type(exc).__name__}: {exc}\n"
+        )
+        sys.stderr.flush()
         return False
 
 
@@ -446,7 +463,7 @@ def is_xiaohongshu_available(config: Dict[str, Any]) -> bool:
 is_apify_available = is_tiktok_available
 
 
-def get_x_source_status(config: Dict[str, Any]) -> Dict[str, Any]:
+def get_x_source_status(config: dict[str, Any]) -> dict[str, Any]:
     """Get detailed X source status for UI decisions.
 
     Returns:

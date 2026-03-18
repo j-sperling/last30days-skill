@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -153,12 +154,12 @@ def run(
 
     bundle = schema.RetrievalBundle(artifacts={"grounding": []})
 
-    # Fix 2: thread-safe set for sources that returned 429
+    # Thread-safe set prevents redundant fetches after a source returns 429
     rate_limited_sources: set[str] = set()
     rate_limit_lock = threading.Lock()
 
     futures = {}
-    # Fix 1: per-source fetch budget
+    # Per-source fetch budget prevents redundant API calls
     source_fetch_count: dict[str, int] = {}
     stream_count = sum(
         1
@@ -172,7 +173,7 @@ def run(
             for source in subquery.sources:
                 if source not in available:
                     continue
-                # Fix 1: enforce per-source fetch cap
+                # Enforce per-source fetch cap
                 cap = MAX_SOURCE_FETCHES.get(source)
                 if cap is not None:
                     current = source_fetch_count.get(source, 0)
@@ -200,29 +201,22 @@ def run(
             subquery, source = futures[future]
             try:
                 raw_items, artifact = future.result()
-                normalized = normalize.normalize_source_items(
-                    source,
-                    raw_items,
-                    from_date,
-                    to_date,
-                    freshness_mode=plan.freshness_mode,
-                )
-                normalized = signals.annotate_stream(normalized, subquery.ranking_query, plan.freshness_mode)
-                normalized = signals.prune_low_relevance(normalized)
-                normalized = dedupe.dedupe_items(normalized)
-                for item in normalized:
-                    item.snippet = snippet.extract_best_snippet(item, subquery.ranking_query)
-                normalized = normalized[: settings["per_stream_limit"]]
-                bundle.items_by_source_and_query[(subquery.label, source)] = normalized
-                bundle.items_by_source.setdefault(source, []).extend(normalized)
-                if artifact:
-                    bundle.artifacts.setdefault("grounding", []).append(artifact)
             except Exception as exc:
-                # Fix 2: share 429 signal so pending futures skip this source
+                # Share 429 signal so pending futures skip this source
                 if _is_rate_limit_error(exc):
                     with rate_limit_lock:
                         rate_limited_sources.add(source)
                 bundle.errors_by_source[source] = str(exc)
+                continue
+            normalized = _normalize_score_dedupe(
+                source, raw_items, from_date, to_date,
+                freshness_mode=plan.freshness_mode,
+                ranking_query=subquery.ranking_query,
+            )
+            normalized = normalized[: settings["per_stream_limit"]]
+            bundle.add_items(subquery.label, source, normalized)
+            if artifact:
+                bundle.artifacts.setdefault("grounding", []).append(artifact)
 
     # Phase 2: supplemental entity-based searches
     _run_supplemental_searches(
@@ -288,6 +282,27 @@ def run(
         warnings=warnings,
         artifacts=bundle.artifacts,
     )
+
+
+def _normalize_score_dedupe(
+    source: str,
+    raw_items: list[dict],
+    from_date: str,
+    to_date: str,
+    freshness_mode: str,
+    ranking_query: str,
+) -> list[schema.SourceItem]:
+    """Normalize, annotate, prune, dedupe, and extract snippets for a batch of raw items."""
+    normalized = normalize.normalize_source_items(
+        source, raw_items, from_date, to_date,
+        freshness_mode=freshness_mode,
+    )
+    normalized = signals.annotate_stream(normalized, ranking_query, freshness_mode)
+    normalized = signals.prune_low_relevance(normalized)
+    normalized = dedupe.dedupe_items(normalized)
+    for item in normalized:
+        item.snippet = snippet.extract_best_snippet(item, ranking_query)
+    return normalized
 
 
 def _finalize_items_by_source(items_by_source_raw: dict[str, list[schema.SourceItem]]) -> dict[str, list[schema.SourceItem]]:
@@ -407,34 +422,28 @@ def _run_supplemental_searches(
             handles, topic, from_date, count_per=3,
         )
     except Exception as exc:
-        import sys
         print(f"[Pipeline] Phase 2 handle search failed: {exc}", file=sys.stderr)
+        if not bundle.items_by_source.get("x"):
+            bundle.errors_by_source["x"] = f"Phase 2 handle search: {exc}"
         return
 
     if not raw_items:
         return
 
-    # Normalize, score, deduplicate
-    normalized = normalize.normalize_source_items(
+    ranking_query = plan.subqueries[0].ranking_query if plan.subqueries else topic
+    normalized = _normalize_score_dedupe(
         "x", raw_items, from_date, to_date,
         freshness_mode=plan.freshness_mode,
+        ranking_query=ranking_query,
     )
     # Deduplicate against Phase 1 URLs
     normalized = [item for item in normalized if item.url not in existing_urls]
     if not normalized:
         return
 
-    ranking_query = plan.subqueries[0].ranking_query if plan.subqueries else topic
-    normalized = signals.annotate_stream(normalized, ranking_query, plan.freshness_mode)
-    normalized = dedupe.dedupe_items(normalized)
-    for item in normalized:
-        item.snippet = snippet.extract_best_snippet(item, ranking_query)
-
     # Merge into bundle under the primary subquery label so fusion picks them up
-    bundle.items_by_source.setdefault("x", []).extend(normalized)
     primary_label = plan.subqueries[0].label if plan.subqueries else "primary"
-    existing = bundle.items_by_source_and_query.get((primary_label, "x"), [])
-    bundle.items_by_source_and_query[(primary_label, "x")] = existing + normalized
+    bundle.add_items(primary_label, "x", normalized)
 
 
 def _retry_thin_sources(

@@ -4,6 +4,7 @@ Uses hn.algolia.com/api/v1 for story discovery and comment enrichment.
 No API key needed - just HTTP calls via stdlib urllib.
 """
 
+import datetime
 import html
 import math
 import sys
@@ -43,15 +44,12 @@ def _date_to_unix(date_str: str) -> int:
     """Convert YYYY-MM-DD to Unix timestamp (start of day UTC)."""
     parts = date_str.split("-")
     year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
-    import calendar
-    import datetime
     dt = datetime.datetime(year, month, day, tzinfo=datetime.timezone.utc)
     return int(dt.timestamp())
 
 
 def _unix_to_date(ts: int) -> str:
     """Convert Unix timestamp to YYYY-MM-DD."""
-    import datetime
     dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
     return dt.strftime("%Y-%m-%d")
 
@@ -154,7 +152,7 @@ def parse_hackernews_response(response: Dict[str, Any], query: str = "") -> List
             relevance = min(1.0, rank_score * 0.7 + engagement_boost + 0.1)
 
         items.append({
-            "object_id": object_id,
+            "id": object_id,
             "title": hit.get("title", ""),
             "url": article_url,
             "hn_url": hn_url,
@@ -248,7 +246,7 @@ def enrich_top_stories(
         futures = {
             executor.submit(
                 _fetch_item_comments,
-                items[idx]["object_id"],
+                items[idx]["id"],
             ): idx
             for idx in to_enrich
         }
@@ -259,7 +257,8 @@ def enrich_top_stories(
                 result = future.result(timeout=15)
                 items[idx]["top_comments"] = result["comments"]
                 items[idx]["comment_insights"] = result["comment_insights"]
-            except Exception:
+            except (KeyError, TypeError, OSError) as exc:
+                _log(f"Comment enrichment failed for story {items[idx].get('id', '?')}: {type(exc).__name__}: {exc}")
                 items[idx]["top_comments"] = []
                 items[idx]["comment_insights"] = []
 

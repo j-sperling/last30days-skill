@@ -1,7 +1,8 @@
 """Bird X search client for the v3.0.0 last30days pipeline.
 
 Uses a vendored subset of @steipete/bird v0.8.0 (MIT License) to search X
-via Twitter's GraphQL API. No external `bird` CLI binary needed - just Node.js 22+.
+via Twitter's GraphQL API. No external `bird` CLI binary needed - just Node.js.
+See scripts/lib/vendor/bird-search/package.json for authoritative version.
 """
 
 import json
@@ -79,7 +80,7 @@ def is_bird_installed() -> bool:
     """Check if vendored Bird search module is available.
 
     Returns:
-        True if bird-search.mjs exists and Node.js 22+ is in PATH.
+        True if bird-search.mjs exists and Node.js is in PATH.
     """
     if not _BIRD_SEARCH_MJS.exists():
         return False
@@ -193,7 +194,7 @@ def _run_bird_search(query: str, count: int, timeout: int) -> Dict[str, Any]:
             try:
                 from last30days import unregister_child_pid
                 unregister_child_pid(proc.pid)
-            except (ImportError, Exception):
+            except Exception:
                 pass
 
         if proc.returncode != 0:
@@ -354,7 +355,7 @@ def search_handles(
 
         except json.JSONDecodeError:
             _log(f"Invalid JSON from handle search for @{handle}")
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             _log(f"Handle search error for @{handle}: {e}")
 
     return all_items

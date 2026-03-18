@@ -142,6 +142,12 @@ class RetrievalBundle:
     errors_by_source: dict[str, str] = field(default_factory=dict)
     artifacts: dict[str, Any] = field(default_factory=dict)
 
+    def add_items(self, label: str, source: str, items: list[SourceItem]) -> None:
+        """Atomically append items to both items_by_source_and_query and items_by_source."""
+        existing = self.items_by_source_and_query.get((label, source), [])
+        self.items_by_source_and_query[(label, source)] = existing + items
+        self.items_by_source.setdefault(source, []).extend(items)
+
 
 def to_dict(value: Any) -> Any:
     """Serialize dataclasses and nested containers."""
