@@ -7,10 +7,39 @@ from . import schema
 RRF_K = 60
 
 
+def _candidate_sort_key(c: schema.Candidate) -> tuple:
+    return (-c.rrf_score, -c.local_relevance, -c.freshness, schema.candidate_source_label(c), c.title)
+
+
 def candidate_key(item: schema.SourceItem) -> str:
     if item.url:
         return item.url.strip()
     return f"{item.source}:{item.item_id}"
+
+
+def _diversify_pool(
+    fused: list[schema.Candidate],
+    pool_limit: int,
+    min_per_source: int = 2,
+) -> list[schema.Candidate]:
+    """Ensure at least *min_per_source* items per active source survive truncation."""
+    reserved: dict[str, list[schema.Candidate]] = {}
+    remainder: list[schema.Candidate] = []
+    for c in fused:
+        bucket = reserved.setdefault(c.source, [])
+        if len(bucket) < min_per_source:
+            bucket.append(c)
+        else:
+            remainder.append(c)
+    pool = [c for per_source in reserved.values() for c in per_source]
+    seen = {c.candidate_id for c in pool}
+    for c in remainder:
+        if len(pool) >= pool_limit:
+            break
+        if c.candidate_id not in seen:
+            pool.append(c)
+    pool.sort(key=_candidate_sort_key)
+    return pool[:pool_limit]
 
 
 def weighted_rrf(
@@ -102,14 +131,5 @@ def weighted_rrf(
             if len(candidate.snippet.split()) < len(item.snippet.split()):
                 candidate.snippet = item.snippet
 
-    fused = sorted(
-        candidates.values(),
-        key=lambda candidate: (
-            -candidate.rrf_score,
-            -candidate.local_relevance,
-            -candidate.freshness,
-            schema.candidate_source_label(candidate),
-            candidate.title,
-        ),
-    )
-    return fused[:pool_limit]
+    fused = sorted(candidates.values(), key=_candidate_sort_key)
+    return _diversify_pool(fused, pool_limit)

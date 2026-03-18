@@ -53,5 +53,68 @@ class FusionV3Tests(unittest.TestCase):
         self.assertEqual(2, len(merged.source_items))
 
 
+    def test_diversify_pool_guarantees_min_per_source(self):
+        """Every active source gets at least 2 items in the fused pool.
+
+        Dominant sources (x, tiktok) get high weights, so pure-RRF truncation
+        would squeeze out low-weight sources entirely.  The diversity guarantee
+        must reserve at least 2 slots per active source.
+        """
+        sources = ["reddit", "hackernews", "x", "tiktok", "bluesky", "youtube"]
+        # Heavily skewed weights: x and tiktok dominate.
+        weights = {
+            "x": 3.0,
+            "tiktok": 2.5,
+            "reddit": 0.5,
+            "hackernews": 0.4,
+            "bluesky": 0.3,
+            "youtube": 0.3,
+        }
+        plan = schema.QueryPlan(
+            intent="concept",
+            freshness_mode="relaxed",
+            cluster_mode="concept",
+            raw_topic="RAG",
+            subqueries=[
+                schema.SubQuery(
+                    label="primary",
+                    search_query="RAG",
+                    ranking_query="What is RAG?",
+                    sources=sources,
+                    weight=1.0,
+                ),
+            ],
+            source_weights=weights,
+        )
+        streams: dict[tuple[str, str], list[schema.SourceItem]] = {}
+        for src in sources:
+            items = []
+            for rank in range(4):
+                items.append(
+                    make_item(
+                        item_id=f"{src}_{rank}",
+                        source=src,
+                        url=f"https://{src}.example.com/{rank}",
+                        title=f"{src} item {rank}",
+                        rank_score=0.8,
+                    )
+                )
+            streams[("primary", src)] = items
+
+        candidates = fusion.weighted_rrf(streams, plan, pool_limit=12)
+        self.assertEqual(12, len(candidates))
+
+        source_counts: dict[str, int] = {}
+        for c in candidates:
+            source_counts[c.source] = source_counts.get(c.source, 0) + 1
+
+        for src in sources:
+            self.assertGreaterEqual(
+                source_counts.get(src, 0),
+                2,
+                f"Source '{src}' has {source_counts.get(src, 0)} items, expected >= 2",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
