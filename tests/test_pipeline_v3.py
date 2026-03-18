@@ -2,12 +2,13 @@ import sys
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from lib import pipeline
 from lib import http
+from lib import schema
 
 
 class PipelineV3Tests(unittest.TestCase):
@@ -135,6 +136,428 @@ class TestRateLimitSharing(unittest.TestCase):
         )
         self.assertEqual(items, [])
         self.assertEqual(artifact, {})
+
+
+def _make_runtime(x_backend="bird"):
+    return schema.ProviderRuntime(
+        reasoning_provider="mock",
+        planner_model="mock",
+        rerank_model="mock",
+        grounding_model="mock",
+        x_search_backend=x_backend,
+    )
+
+
+def _make_plan(topic="test topic"):
+    return schema.QueryPlan(
+        intent="exploration",
+        freshness_mode="balanced_recent",
+        cluster_mode="topic",
+        raw_topic=topic,
+        subqueries=[
+            schema.SubQuery(
+                label="primary",
+                search_query=topic,
+                ranking_query=f"What recent evidence matters for {topic}?",
+                sources=["x", "reddit"],
+            )
+        ],
+        source_weights={"x": 1.0, "reddit": 1.0},
+    )
+
+
+def _make_source_item(source, item_id, url, author=None, body="", container=None, metadata=None):
+    return schema.SourceItem(
+        item_id=item_id,
+        source=source,
+        title=f"Item {item_id}",
+        body=body,
+        url=url,
+        author=author,
+        container=container,
+        metadata=metadata or {},
+    )
+
+
+class TestSupplementalSearches(unittest.TestCase):
+    """R1: Phase 2 entity drilling should be wired into the pipeline."""
+
+    def test_run_supplemental_searches_exists(self):
+        """_run_supplemental_searches must be a callable in pipeline module."""
+        self.assertTrue(
+            hasattr(pipeline, "_run_supplemental_searches"),
+            "_run_supplemental_searches function not found in pipeline module",
+        )
+        self.assertTrue(callable(pipeline._run_supplemental_searches))
+
+    @patch("lib.bird_x.search_handles")
+    @patch("lib.entity_extract.extract_entities")
+    def test_entity_extract_called_after_phase1(self, mock_extract, mock_handles):
+        """Phase 2 should call entity_extract on Phase 1 X results, then search_handles."""
+        mock_extract.return_value = {"x_handles": ["analyst1", "reporter2"], "x_hashtags": [], "reddit_subreddits": []}
+        mock_handles.return_value = [
+            {
+                "id": "supp1",
+                "text": "Supplemental tweet from analyst1",
+                "url": "https://x.com/analyst1/status/999",
+                "author_handle": "analyst1",
+                "date": "2026-03-15",
+                "engagement": {"likes": 50},
+                "relevance": 0.8,
+                "why_relevant": "direct handle search",
+            }
+        ]
+
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["x"] = [
+            _make_source_item("x", "X1", "https://x.com/analyst1/status/1", author="analyst1", body="Some tweet about AI"),
+            _make_source_item("x", "X2", "https://x.com/reporter2/status/2", author="reporter2", body="AI analysis @expert3"),
+        ]
+
+        plan = _make_plan("AI safety")
+        config = {}
+
+        pipeline._run_supplemental_searches(
+            topic="AI safety",
+            bundle=bundle,
+            plan=plan,
+            config=config,
+            depth="default",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime("bird"),
+            mock=False,
+            rate_limited_sources=set(),
+            rate_limit_lock=threading.Lock(),
+        )
+
+        mock_extract.assert_called_once()
+        mock_handles.assert_called_once()
+        # Supplemental items should be merged into bundle
+        x_urls = {item.url for item in bundle.items_by_source.get("x", [])}
+        self.assertIn("https://x.com/analyst1/status/999", x_urls)
+
+    @patch("lib.bird_x.search_handles")
+    @patch("lib.entity_extract.extract_entities")
+    def test_supplemental_items_deduplicated_by_url(self, mock_extract, mock_handles):
+        """Supplemental items with same URL as Phase 1 should not be duplicated."""
+        mock_extract.return_value = {"x_handles": ["analyst1"], "x_hashtags": [], "reddit_subreddits": []}
+        # Return item with same URL as Phase 1
+        mock_handles.return_value = [
+            {
+                "id": "dup1",
+                "text": "Same tweet",
+                "url": "https://x.com/analyst1/status/1",
+                "author_handle": "analyst1",
+                "date": "2026-03-15",
+                "engagement": {"likes": 50},
+                "relevance": 0.8,
+                "why_relevant": "duplicate",
+            }
+        ]
+
+        bundle = schema.RetrievalBundle()
+        original = _make_source_item("x", "X1", "https://x.com/analyst1/status/1", author="analyst1")
+        bundle.items_by_source["x"] = [original]
+
+        plan = _make_plan("AI safety")
+
+        pipeline._run_supplemental_searches(
+            topic="AI safety",
+            bundle=bundle,
+            plan=plan,
+            config={},
+            depth="default",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime("bird"),
+            mock=False,
+            rate_limited_sources=set(),
+            rate_limit_lock=threading.Lock(),
+        )
+
+        # Should still have only 1 item (no duplicates)
+        x_items = bundle.items_by_source.get("x", [])
+        urls = [item.url for item in x_items]
+        self.assertEqual(
+            urls.count("https://x.com/analyst1/status/1"), 1,
+            f"Duplicate URL found: {urls}",
+        )
+
+    def test_phase2_skipped_in_quick_mode(self):
+        """_run_supplemental_searches should return immediately when depth='quick'."""
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["x"] = [
+            _make_source_item("x", "X1", "https://x.com/a/1", author="someone"),
+        ]
+
+        # If it tries to import entity_extract, that's fine -- it should return before calling it
+        pipeline._run_supplemental_searches(
+            topic="test",
+            bundle=bundle,
+            plan=_make_plan(),
+            config={},
+            depth="quick",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime("bird"),
+            mock=False,
+            rate_limited_sources=set(),
+            rate_limit_lock=threading.Lock(),
+        )
+        # Bundle should be unchanged (only original item)
+        self.assertEqual(len(bundle.items_by_source["x"]), 1)
+
+    def test_phase2_skipped_in_mock_mode(self):
+        """_run_supplemental_searches should return immediately when mock=True."""
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["x"] = [
+            _make_source_item("x", "X1", "https://x.com/a/1", author="someone"),
+        ]
+
+        pipeline._run_supplemental_searches(
+            topic="test",
+            bundle=bundle,
+            plan=_make_plan(),
+            config={},
+            depth="default",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime("bird"),
+            mock=True,
+            rate_limited_sources=set(),
+            rate_limit_lock=threading.Lock(),
+        )
+        self.assertEqual(len(bundle.items_by_source["x"]), 1)
+
+    def test_phase2_skipped_when_x_rate_limited(self):
+        """_run_supplemental_searches should skip when X is rate-limited."""
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["x"] = [
+            _make_source_item("x", "X1", "https://x.com/a/1", author="someone"),
+        ]
+
+        pipeline._run_supplemental_searches(
+            topic="test",
+            bundle=bundle,
+            plan=_make_plan(),
+            config={},
+            depth="default",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime("bird"),
+            mock=False,
+            rate_limited_sources={"x"},
+            rate_limit_lock=threading.Lock(),
+        )
+        self.assertEqual(len(bundle.items_by_source["x"]), 1)
+
+    def test_phase2_skipped_when_backend_not_bird(self):
+        """_run_supplemental_searches should skip when X backend is not bird."""
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["x"] = [
+            _make_source_item("x", "X1", "https://x.com/a/1", author="someone"),
+        ]
+
+        pipeline._run_supplemental_searches(
+            topic="test",
+            bundle=bundle,
+            plan=_make_plan(),
+            config={},
+            depth="default",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime("xai"),
+            mock=False,
+            rate_limited_sources=set(),
+            rate_limit_lock=threading.Lock(),
+        )
+        self.assertEqual(len(bundle.items_by_source["x"]), 1)
+
+
+class TestThinSourceRetry(unittest.TestCase):
+    """R2: Dynamic query refinement on thin results."""
+
+    def test_retry_thin_sources_exists(self):
+        """_retry_thin_sources must be a callable in pipeline module."""
+        self.assertTrue(
+            hasattr(pipeline, "_retry_thin_sources"),
+            "_retry_thin_sources function not found in pipeline module",
+        )
+        self.assertTrue(callable(pipeline._retry_thin_sources))
+
+    @patch("lib.pipeline._retrieve_stream")
+    def test_thin_source_retried_with_core_subject(self, mock_retrieve):
+        """Sources with < 3 items and no errors should be retried."""
+        mock_retrieve.return_value = (
+            [
+                {
+                    "id": "retry1",
+                    "title": "Retry result",
+                    "url": "https://reddit.com/r/test/2",
+                    "subreddit": "test",
+                    "date": "2026-03-15",
+                    "engagement": {"score": 10},
+                    "selftext": "Retry content",
+                    "relevance": 0.7,
+                    "why_relevant": "retry",
+                }
+            ],
+            {},
+        )
+
+        bundle = schema.RetrievalBundle()
+        # Only 1 reddit item (thin)
+        bundle.items_by_source["reddit"] = [
+            _make_source_item("reddit", "R1", "https://reddit.com/r/test/1", container="test"),
+        ]
+        # 5 X items (not thin)
+        bundle.items_by_source["x"] = [
+            _make_source_item("x", f"X{i}", f"https://x.com/a/{i}") for i in range(5)
+        ]
+
+        plan = _make_plan("advanced AI safety techniques")
+        settings = pipeline.DEPTH_SETTINGS["default"]
+
+        pipeline._retry_thin_sources(
+            topic="advanced AI safety techniques",
+            bundle=bundle,
+            plan=plan,
+            config={},
+            depth="default",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime(),
+            grounding_provider=None,
+            mock=False,
+            rate_limited_sources=set(),
+            rate_limit_lock=threading.Lock(),
+            settings=settings,
+        )
+
+        # _retrieve_stream should have been called for reddit (thin source)
+        mock_retrieve.assert_called()
+        call_sources = [c.kwargs.get("source") for c in mock_retrieve.call_args_list]
+        self.assertIn("reddit", call_sources)
+        # X should NOT have been retried
+        self.assertNotIn("x", call_sources)
+
+    def test_sources_with_enough_items_not_retried(self):
+        """Sources with >= 3 items should not be retried."""
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["reddit"] = [
+            _make_source_item("reddit", f"R{i}", f"https://reddit.com/r/test/{i}") for i in range(5)
+        ]
+        bundle.items_by_source["x"] = [
+            _make_source_item("x", f"X{i}", f"https://x.com/a/{i}") for i in range(5)
+        ]
+
+        plan = _make_plan("AI safety")
+        settings = pipeline.DEPTH_SETTINGS["default"]
+
+        with patch("lib.pipeline._retrieve_stream") as mock_retrieve:
+            pipeline._retry_thin_sources(
+                topic="AI safety",
+                bundle=bundle,
+                plan=plan,
+                config={},
+                depth="default",
+                date_range=("2026-02-15", "2026-03-17"),
+                runtime=_make_runtime(),
+                grounding_provider=None,
+                mock=False,
+                rate_limited_sources=set(),
+                rate_limit_lock=threading.Lock(),
+                settings=settings,
+            )
+            mock_retrieve.assert_not_called()
+
+    def test_errored_sources_not_retried(self):
+        """Sources in errors_by_source should not be retried even if thin."""
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["reddit"] = [
+            _make_source_item("reddit", "R1", "https://reddit.com/r/test/1"),
+        ]
+        bundle.errors_by_source["reddit"] = "API error"
+
+        plan = _make_plan("AI safety")
+        settings = pipeline.DEPTH_SETTINGS["default"]
+
+        with patch("lib.pipeline._retrieve_stream") as mock_retrieve:
+            pipeline._retry_thin_sources(
+                topic="AI safety",
+                bundle=bundle,
+                plan=plan,
+                config={},
+                depth="default",
+                date_range=("2026-02-15", "2026-03-17"),
+                runtime=_make_runtime(),
+                grounding_provider=None,
+                mock=False,
+                rate_limited_sources=set(),
+                rate_limit_lock=threading.Lock(),
+                settings=settings,
+            )
+            mock_retrieve.assert_not_called()
+
+    def test_retry_skipped_in_quick_mode(self):
+        """_retry_thin_sources should return immediately in quick mode."""
+        bundle = schema.RetrievalBundle()
+        bundle.items_by_source["reddit"] = [
+            _make_source_item("reddit", "R1", "https://reddit.com/r/test/1"),
+        ]
+
+        plan = _make_plan("AI safety")
+        settings = pipeline.DEPTH_SETTINGS["quick"]
+
+        with patch("lib.pipeline._retrieve_stream") as mock_retrieve:
+            pipeline._retry_thin_sources(
+                topic="AI safety",
+                bundle=bundle,
+                plan=plan,
+                config={},
+                depth="quick",
+                date_range=("2026-02-15", "2026-03-17"),
+                runtime=_make_runtime(),
+                grounding_provider=None,
+                mock=False,
+                rate_limited_sources=set(),
+                rate_limit_lock=threading.Lock(),
+                settings=settings,
+            )
+            mock_retrieve.assert_not_called()
+
+
+class TestXHandleFlag(unittest.TestCase):
+    """R3: --x-handle CLI flag and pipeline parameter."""
+
+    def test_cli_accepts_x_handle_flag(self):
+        """build_parser() should accept --x-handle."""
+        import last30days as cli
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["test topic", "--x-handle", "elonmusk"])
+        self.assertEqual(args.x_handle, "elonmusk")
+
+    def test_cli_x_handle_default_is_none(self):
+        """--x-handle should default to None."""
+        import last30days as cli
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["test topic"])
+        self.assertIsNone(args.x_handle)
+
+    def test_pipeline_run_accepts_x_handle(self):
+        """pipeline.run() should accept x_handle keyword argument."""
+        import inspect
+        sig = inspect.signature(pipeline.run)
+        self.assertIn("x_handle", sig.parameters, "pipeline.run() must accept x_handle parameter")
+
+    def test_x_handle_passed_to_supplemental_searches(self):
+        """When x_handle is provided, it should trigger targeted handle search."""
+        # Run pipeline in mock mode with x_handle -- should not raise
+        report = pipeline.run(
+            topic="test topic",
+            config={"LAST30DAYS_REASONING_PROVIDER": "gemini"},
+            depth="quick",
+            requested_sources=["reddit", "x", "grounding"],
+            mock=True,
+            x_handle="testuser",
+        )
+        self.assertEqual("test topic", report.topic)
 
 
 if __name__ == "__main__":

@@ -133,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--diagnose", action="store_true", help="Print provider and source availability")
     parser.add_argument("--save-dir", help="Optional directory for saving the rendered output")
     parser.add_argument("--store", action="store_true", help="Persist ranked findings to the SQLite research store")
+    parser.add_argument("--x-handle", help="X handle for targeted supplemental search")
     return parser
 
 
@@ -161,6 +162,7 @@ def main() -> int:
         depth=depth,
         requested_sources=requested_sources,
         mock=args.mock,
+        x_handle=args.x_handle,
     )
     if args.store:
         counts = persist_report(report)

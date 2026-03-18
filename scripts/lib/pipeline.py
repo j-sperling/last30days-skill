@@ -13,6 +13,7 @@ from . import (
     bluesky,
     dates,
     dedupe,
+    entity_extract,
     env,
     grounding,
     hackernews,
@@ -21,6 +22,7 @@ from . import (
     planner,
     polymarket,
     providers,
+    query,
     reddit,
     rerank,
     schema,
@@ -120,6 +122,7 @@ def run(
     depth: str,
     requested_sources: list[str] | None = None,
     mock: bool = False,
+    x_handle: str | None = None,
 ) -> schema.Report:
     settings = DEPTH_SETTINGS[depth]
     requested_sources = normalize_requested_sources(requested_sources)
@@ -221,6 +224,37 @@ def run(
                         rate_limited_sources.add(source)
                 bundle.errors_by_source[source] = str(exc)
 
+    # Phase 2: supplemental entity-based searches
+    _run_supplemental_searches(
+        topic=topic,
+        bundle=bundle,
+        plan=plan,
+        config=config,
+        depth=depth,
+        date_range=(from_date, to_date),
+        runtime=runtime,
+        mock=mock,
+        rate_limited_sources=rate_limited_sources,
+        rate_limit_lock=rate_limit_lock,
+        x_handle=x_handle,
+    )
+
+    # Phase 2b: retry thin sources with simplified query
+    _retry_thin_sources(
+        topic=topic,
+        bundle=bundle,
+        plan=plan,
+        config=config,
+        depth=depth,
+        date_range=(from_date, to_date),
+        runtime=runtime,
+        grounding_provider=grounding_provider,
+        mock=mock,
+        rate_limited_sources=rate_limited_sources,
+        rate_limit_lock=rate_limit_lock,
+        settings=settings,
+    )
+
     items_by_source = _finalize_items_by_source(bundle.items_by_source)
     candidates = weighted_rrf(bundle.items_by_source_and_query, plan, pool_limit=settings["pool_limit"])
     ranked_candidates = rerank.rerank_candidates(
@@ -287,6 +321,196 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     if hasattr(exc, "status_code") and getattr(exc, "status_code", None) == 429:
         return True
     return "429" in str(exc)
+
+
+def _run_supplemental_searches(
+    *,
+    topic: str,
+    bundle: schema.RetrievalBundle,
+    plan: schema.QueryPlan,
+    config: dict[str, Any],
+    depth: str,
+    date_range: tuple[str, str],
+    runtime: schema.ProviderRuntime,
+    mock: bool,
+    rate_limited_sources: set[str],
+    rate_limit_lock: threading.Lock,
+    x_handle: str | None = None,
+) -> None:
+    """Phase 2: extract entities from Phase 1 results, run targeted supplemental searches."""
+    if depth == "quick" or mock:
+        return
+
+    from_date, to_date = date_range
+
+    # Convert SourceItems to dicts for entity_extract
+    x_dicts = [
+        {"author_handle": item.author or "", "text": item.body or ""}
+        for item in bundle.items_by_source.get("x", [])
+    ]
+    reddit_dicts = [
+        {
+            "subreddit": item.container or "",
+            "comment_insights": item.metadata.get("comment_insights", []),
+            "top_comments": [
+                {"excerpt": c.get("excerpt", c.get("text", ""))}
+                for c in (item.metadata.get("top_comments") or [])
+                if isinstance(c, dict)
+            ],
+        }
+        for item in bundle.items_by_source.get("reddit", [])
+    ]
+
+    if not x_dicts and not reddit_dicts and not x_handle:
+        return
+
+    entities = entity_extract.extract_entities(
+        reddit_dicts, x_dicts,
+        max_handles=3, max_subreddits=3,
+    )
+
+    handles = entities.get("x_handles", [])
+
+    # Add explicit --x-handle if provided
+    if x_handle:
+        handle_clean = x_handle.lstrip("@").lower()
+        if handle_clean not in [h.lower() for h in handles]:
+            handles.insert(0, handle_clean)
+
+    if not handles:
+        return
+
+    # Check if X is rate-limited
+    if "x" in rate_limited_sources:
+        return
+
+    backend = runtime.x_search_backend or env.get_x_source(config)
+    if backend != "bird":
+        return  # Handle search only works with Bird CLI
+
+    # Collect existing URLs for deduplication
+    existing_urls = {
+        item.url
+        for items in bundle.items_by_source.values()
+        for item in items
+        if item.url
+    }
+
+    try:
+        raw_items = bird_x.search_handles(
+            handles, topic, from_date, count_per=3,
+        )
+    except Exception as exc:
+        import sys
+        print(f"[Pipeline] Phase 2 handle search failed: {exc}", file=sys.stderr)
+        return
+
+    if not raw_items:
+        return
+
+    # Normalize, score, deduplicate
+    normalized = normalize.normalize_source_items(
+        "x", raw_items, from_date, to_date,
+        freshness_mode=plan.freshness_mode,
+    )
+    # Deduplicate against Phase 1 URLs
+    normalized = [item for item in normalized if item.url not in existing_urls]
+    if not normalized:
+        return
+
+    ranking_query = plan.subqueries[0].ranking_query if plan.subqueries else topic
+    normalized = signals.annotate_stream(normalized, ranking_query, plan.freshness_mode)
+    normalized = dedupe.dedupe_items(normalized)
+    for item in normalized:
+        item.snippet = snippet.extract_best_snippet(item, ranking_query)
+
+    # Merge into bundle under the primary subquery label so fusion picks them up
+    bundle.items_by_source.setdefault("x", []).extend(normalized)
+    primary_label = plan.subqueries[0].label if plan.subqueries else "primary"
+    existing = bundle.items_by_source_and_query.get((primary_label, "x"), [])
+    bundle.items_by_source_and_query[(primary_label, "x")] = existing + normalized
+
+
+def _retry_thin_sources(
+    *,
+    topic: str,
+    bundle: schema.RetrievalBundle,
+    plan: schema.QueryPlan,
+    config: dict[str, Any],
+    depth: str,
+    date_range: tuple[str, str],
+    runtime: schema.ProviderRuntime,
+    grounding_provider: object | None,
+    mock: bool,
+    rate_limited_sources: set[str],
+    rate_limit_lock: threading.Lock,
+    settings: dict[str, Any],
+) -> None:
+    """Retry sources with thin results using simplified core subject query."""
+    if depth == "quick":
+        return
+
+    thin_sources = [
+        source for source, items in bundle.items_by_source.items()
+        if len(items) < 3 and source not in bundle.errors_by_source
+    ]
+
+    if not thin_sources:
+        return
+
+    core = query.extract_core_subject(topic, max_words=3)
+    if not core or core.lower() == topic.lower():
+        return
+
+    from_date, to_date = date_range
+
+    # Create a retry subquery with the simplified core subject
+    retry_subquery = schema.SubQuery(
+        label="retry",
+        search_query=core,
+        ranking_query=f"What recent evidence from the last 30 days matters for {core}?",
+        sources=thin_sources,
+        weight=0.3,
+    )
+
+    for source in thin_sources:
+        if source in rate_limited_sources:
+            continue
+        try:
+            raw_items, artifact = _retrieve_stream(
+                topic=topic,
+                subquery=retry_subquery,
+                source=source,
+                config=config,
+                depth=depth,
+                date_range=date_range,
+                runtime=runtime,
+                grounding_provider=grounding_provider,
+                mock=mock,
+                rate_limited_sources=rate_limited_sources,
+                rate_limit_lock=rate_limit_lock,
+            )
+            normalized = normalize.normalize_source_items(
+                source, raw_items, from_date, to_date,
+                freshness_mode=plan.freshness_mode,
+            )
+            normalized = signals.annotate_stream(normalized, retry_subquery.ranking_query, plan.freshness_mode)
+            normalized = signals.prune_low_relevance(normalized)
+            normalized = dedupe.dedupe_items(normalized)
+            for item in normalized:
+                item.snippet = snippet.extract_best_snippet(item, retry_subquery.ranking_query)
+            normalized = normalized[:settings["per_stream_limit"]]
+
+            existing_urls = {item.url for item in bundle.items_by_source.get(source, []) if item.url}
+            new_items = [item for item in normalized if item.url not in existing_urls]
+
+            if new_items:
+                bundle.items_by_source.setdefault(source, []).extend(new_items)
+                primary_label = plan.subqueries[0].label if plan.subqueries else "primary"
+                existing = bundle.items_by_source_and_query.get((primary_label, source), [])
+                bundle.items_by_source_and_query[(primary_label, source)] = existing + new_items
+        except Exception:
+            pass  # Don't add errors for retry failures
 
 
 def _retrieve_stream(
