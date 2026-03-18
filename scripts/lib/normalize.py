@@ -53,7 +53,7 @@ def normalize_source_items(
     if normalizer is None:
         raise ValueError(f"Unsupported source: {source}")
     normalized = [normalizer(source, item, index, from_date, to_date) for index, item in enumerate(items)]
-    require_date = source == "grounding"
+    require_date = False
     filtered = filter_by_date_range(normalized, from_date, to_date, require_date=require_date)
     if filtered:
         return filtered
