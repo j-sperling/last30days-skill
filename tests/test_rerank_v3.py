@@ -106,6 +106,30 @@ class RerankV3Tests(unittest.TestCase):
         self.assertEqual("best hit", candidate.explanation)
         self.assertGreater(candidate.final_score, 0.0)
 
+    def test_build_prompt_includes_comparison_intent_hint(self):
+        plan = make_plan()  # intent="comparison"
+        candidate = make_candidate(80.0)
+        prompt = rerank._build_prompt("openclaw vs nanoclaw", plan, [candidate])
+        self.assertIn("Intent-specific guidance (comparison)", prompt)
+        self.assertIn("head-to-head", prompt.lower())
+
+    def test_build_prompt_includes_factual_intent_hint(self):
+        plan = make_plan()
+        plan.intent = "factual"
+        candidate = make_candidate(80.0)
+        prompt = rerank._build_prompt("latest GDP numbers", plan, [candidate])
+        self.assertTrue(
+            "facts" in prompt.lower() or "primary sources" in prompt.lower(),
+            "factual intent hint should mention facts or primary sources",
+        )
+
+    def test_build_prompt_no_hint_for_unknown_intent(self):
+        plan = make_plan()
+        plan.intent = "unknown_intent_xyz"
+        candidate = make_candidate(80.0)
+        prompt = rerank._build_prompt("some topic", plan, [candidate])
+        self.assertNotIn("Intent-specific guidance", prompt)
+
     def test_rerank_candidates_uses_provider_for_shortlist_and_fallback_for_tail(self):
         first = make_candidate(0.0)
         second = make_candidate(0.0)

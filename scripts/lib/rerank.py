@@ -4,6 +4,42 @@ from __future__ import annotations
 
 from . import schema
 
+INTENT_SCORING_HINTS: dict[str, str] = {
+    "comparison": (
+        "Prefer items that directly compare, contrast, or benchmark the entities"
+        " mentioned in the topic. Head-to-head comparisons score higher than items"
+        " covering only one entity."
+    ),
+    "how_to": (
+        "Prefer tutorials, step-by-step guides, and practical demonstrations."
+        " Video walkthroughs and code examples score higher than theoretical discussion."
+    ),
+    "prediction": (
+        "Prefer items with quantitative forecasts, odds, market data, or expert"
+        " predictions. Vague speculation scores lower."
+    ),
+    "factual": (
+        "Prefer items with specific facts, dates, numbers, and primary sources."
+        " News reports with direct quotes score higher than commentary."
+    ),
+    "opinion": (
+        "Prefer items with substantive opinions backed by reasoning or evidence."
+        " Hot takes without substance score lower."
+    ),
+    "breaking_news": (
+        "Prefer the latest updates, eyewitness reports, and official statements."
+        " Recency matters more than depth."
+    ),
+    "concept": (
+        "Prefer clear explanations with examples or analogies. Accessible content"
+        " scores higher than dense academic papers unless the topic is highly technical."
+    ),
+    "product": (
+        "Prefer hands-on reviews, benchmarks, and user experience reports."
+        " Marketing copy and listicles score lower."
+    ),
+}
+
 
 def rerank_candidates(
     *,
@@ -40,6 +76,13 @@ def rerank_candidates(
             candidate.title,
         ),
     )
+
+
+def _intent_hint_block(plan: schema.QueryPlan) -> str:
+    hint = INTENT_SCORING_HINTS.get(plan.intent, "")
+    if hint:
+        return f"\nIntent-specific guidance ({plan.intent}):\n- {hint}\n"
+    return ""
 
 
 def _build_prompt(topic: str, plan: schema.QueryPlan, candidates: list[schema.Candidate]) -> str:
@@ -84,7 +127,7 @@ Scoring guidance:
 - 70 to 89: clearly relevant and useful
 - 40 to 69: somewhat relevant but weaker
 - 0 to 39: weak, redundant, or off-target
-
+{_intent_hint_block(plan)}
 Candidates:
 {candidate_block}
 """.strip()
