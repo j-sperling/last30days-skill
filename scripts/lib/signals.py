@@ -32,7 +32,7 @@ def local_relevance(item: schema.SourceItem, ranking_query: str) -> float:
         if part
     )
     hashtags = item.metadata.get("hashtags") if isinstance(item.metadata, dict) else None
-    return relevance.token_overlap_relevance(ranking_query, text, hashtags=hashtags)
+    return relevance.token_overlap_relevance(ranking_query, text, title=item.title, hashtags=hashtags)
 
 
 def freshness(item: schema.SourceItem, freshness_mode: str = "balanced_recent") -> int:

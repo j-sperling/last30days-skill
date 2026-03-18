@@ -39,6 +39,26 @@ class RelevanceCoreV3Tests(unittest.TestCase):
         )
         self.assertLessEqual(score, 0.24)
 
+    def test_title_weighting_boosts_grounding_items_with_relevant_title(self):
+        """Grounding items have long bodies that dilute token overlap.
+
+        Title weighting should rescue items whose title is highly relevant
+        even when the body is mostly irrelevant filler.
+        """
+        title = "Google completes Wiz acquisition for $32 billion"
+        body = " ".join(["lorem ipsum dolor sit amet consectetur adipiscing"] * 25)
+        query = "Google Wiz acquisition"
+        score = relevance.token_overlap_relevance(query, body, title=title)
+        self.assertGreater(score, 0.03)
+
+    def test_title_none_preserves_backward_compat(self):
+        """When title is not provided, behavior should be identical to before."""
+        query = "openclaw nanoclaw"
+        text = "A detailed openclaw nanoclaw comparison for agents."
+        score_no_title = relevance.token_overlap_relevance(query, text)
+        score_none_title = relevance.token_overlap_relevance(query, text, title=None)
+        self.assertEqual(score_no_title, score_none_title)
+
     def test_token_overlap_relevance_splits_concatenated_hashtags(self):
         score = relevance.token_overlap_relevance(
             "claude code",

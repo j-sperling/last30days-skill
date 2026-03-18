@@ -71,49 +71,13 @@ def _normalize_phrase(text: str) -> str:
     return ' '.join(re.sub(r'[^\w\s]', ' ', text.lower()).split())
 
 
-def token_overlap_relevance(
+def _score_tokens(
+    q_tokens: Set[str],
+    t_tokens: Set[str],
+    combined: str,
     query: str,
-    text: str,
-    hashtags: Optional[List[str]] = None,
 ) -> float:
-    """Compute a query-centric relevance score between 0.0 and 1.0.
-
-    The score combines:
-    - query coverage
-    - informative-token coverage
-    - a small precision term to penalize extra noise
-    - an exact phrase bonus
-
-    Generic tokens alone are capped below the post-retrieval 0.3 threshold.
-
-    Args:
-        query: Search query
-        text: Content text to match against
-        hashtags: Optional list of hashtags (TikTok/Instagram). Concatenated
-            hashtags are split to match query tokens (e.g. "claudecode" matches "claude").
-
-    Returns:
-        Float between 0.0 and 1.0 (0.5 for empty queries)
-    """
-    q_tokens = tokenize(query)
-
-    # Combine text and hashtags for matching
-    combined = text
-    if hashtags:
-        combined = f"{text} {' '.join(hashtags)}"
-    t_tokens = tokenize(combined)
-
-    # Split concatenated hashtags (e.g., "claudecode" -> matches "claude", "code")
-    if hashtags:
-        for tag in hashtags:
-            tag_lower = tag.lower()
-            for qt in q_tokens:
-                if qt in tag_lower and qt != tag_lower:
-                    t_tokens.add(qt)
-
-    if not q_tokens:
-        return 0.5  # Neutral fallback for empty/stopword-only queries
-
+    """Core scoring logic shared by the plain and title-weighted paths."""
     overlap_tokens = q_tokens & t_tokens
     overlap = len(overlap_tokens)
     if overlap == 0:
@@ -146,3 +110,70 @@ def token_overlap_relevance(
         return round(min(0.24, base), 2)
 
     return round(min(1.0, base + phrase_bonus), 2)
+
+
+def token_overlap_relevance(
+    query: str,
+    text: str,
+    *,
+    title: Optional[str] = None,
+    hashtags: Optional[List[str]] = None,
+) -> float:
+    """Compute a query-centric relevance score between 0.0 and 1.0.
+
+    The score combines:
+    - query coverage
+    - informative-token coverage
+    - a small precision term to penalize extra noise
+    - an exact phrase bonus
+
+    When *title* is provided, title matches are weighted 3x over body matches
+    (60/40 blend) so that items with relevant titles but long dilutive bodies
+    (e.g. grounding/web search results) are not unfairly penalized.
+
+    Generic tokens alone are capped below the post-retrieval 0.3 threshold.
+
+    Args:
+        query: Search query
+        text: Content text to match against
+        title: Optional title text. When provided, title and body are scored
+            separately and blended (0.6 title + 0.4 body).
+        hashtags: Optional list of hashtags (TikTok/Instagram). Concatenated
+            hashtags are split to match query tokens (e.g. "claudecode" matches "claude").
+
+    Returns:
+        Float between 0.0 and 1.0 (0.5 for empty queries)
+    """
+    q_tokens = tokenize(query)
+
+    if not q_tokens:
+        return 0.5  # Neutral fallback for empty/stopword-only queries
+
+    # Combine text and hashtags for matching
+    combined = text
+    if hashtags:
+        combined = f"{text} {' '.join(hashtags)}"
+
+    def _expand_hashtags(tokens: Set[str]) -> Set[str]:
+        if not hashtags:
+            return tokens
+        for tag in hashtags:
+            tag_lower = tag.lower()
+            for qt in q_tokens:
+                if qt in tag_lower and qt != tag_lower:
+                    tokens.add(qt)
+        return tokens
+
+    # Title-weighted path: score title and body separately, blend 60/40
+    if title:
+        title_tokens = _expand_hashtags(tokenize(title))
+        body_tokens = _expand_hashtags(tokenize(combined))
+        title_score = _score_tokens(q_tokens, title_tokens, title, query)
+        body_score = _score_tokens(q_tokens, body_tokens, combined, query)
+        return round(min(1.0, 0.6 * title_score + 0.4 * body_score), 2)
+
+    # Default path: score combined text as before
+    t_tokens = tokenize(combined)
+    t_tokens = _expand_hashtags(t_tokens)
+
+    return _score_tokens(q_tokens, t_tokens, combined, query)
