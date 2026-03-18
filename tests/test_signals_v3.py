@@ -413,6 +413,66 @@ class SignalsV3Tests(unittest.TestCase):
         expected = 0.30 * math.log1p(80)
         self.assertAlmostEqual(expected, result)
 
+    # -- Fix 5: Rebalance engagement weight --
+
+    def test_engagement_weight_meaningful_for_social_ranking(self):
+        """Engagement must have enough weight to differentiate otherwise-equal items."""
+        high_engagement = schema.SourceItem(
+            item_id="viral",
+            source="x",
+            title="Trending topic discussion",
+            body="Popular social post",
+            url="https://example.com/viral",
+            published_at="2026-03-15",
+            engagement={"likes": 50000, "reposts": 5000, "replies": 2000, "quotes": 500},
+        )
+        low_engagement = schema.SourceItem(
+            item_id="quiet",
+            source="x",
+            title="Trending topic discussion",
+            body="Popular social post",
+            url="https://example.com/quiet",
+            published_at="2026-03-15",
+            engagement={"likes": 10, "reposts": 1, "replies": 0, "quotes": 0},
+        )
+        ranked = signals.annotate_stream(
+            [low_engagement, high_engagement],
+            ranking_query="trending topic discussion",
+            freshness_mode="balanced_recent",
+        )
+        high_score = ranked[0].metadata["local_rank_score"]
+        low_score = ranked[1].metadata["local_rank_score"]
+        gap = high_score - low_score
+        # With 10% engagement weight, the gap should be >= 0.06
+        # With 5% weight, gap would be ~0.04
+        self.assertGreaterEqual(gap, 0.06,
+                                f"Engagement gap should be >= 0.06 with 10% weight, got {gap:.4f}")
+
+    # -- Fix 4: Lower prune threshold for social media --
+
+    def test_prune_keeps_social_items_above_003(self):
+        """Social media items with low but non-trivial relevance should survive pruning."""
+        social = schema.SourceItem(
+            item_id="social",
+            source="x",
+            title="Viral tweet about topic",
+            body="Short social post",
+            url="https://example.com/social",
+            metadata={"local_relevance": 0.05},
+        )
+        strong = schema.SourceItem(
+            item_id="strong",
+            source="grounding",
+            title="Detailed article about topic",
+            body="In-depth analysis",
+            url="https://example.com/strong",
+            metadata={"local_relevance": 0.4},
+        )
+        pruned = signals.prune_low_relevance([strong, social])
+        ids = [item.item_id for item in pruned]
+        self.assertIn("social", ids, "Item with relevance 0.05 should survive pruning")
+        self.assertIn("strong", ids)
+
 
 if __name__ == "__main__":
     unittest.main()

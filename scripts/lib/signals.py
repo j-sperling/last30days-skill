@@ -142,16 +142,16 @@ def annotate_stream(
         item.metadata["engagement_score"] = engagement_score
         item.metadata["source_quality"] = source_quality(item.source)
         item.metadata["local_rank_score"] = (
-            0.75 * item.metadata["local_relevance"]
-            + 0.20 * (item.metadata["freshness"] / 100.0)
-            + 0.05 * ((engagement_score or 0) / 100.0)
+            0.65 * item.metadata["local_relevance"]
+            + 0.25 * (item.metadata["freshness"] / 100.0)
+            + 0.10 * ((engagement_score or 0) / 100.0)
         )
     return sorted(items, key=lambda item: item.metadata["local_rank_score"], reverse=True)
 
 
 def prune_low_relevance(
     items: list[schema.SourceItem],
-    minimum: float = 0.1,
+    minimum: float = 0.03,
 ) -> list[schema.SourceItem]:
     """Drop obviously weak lexical matches when stronger evidence exists."""
     filtered = [
