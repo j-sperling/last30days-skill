@@ -1,23 +1,30 @@
 [
   {"topic": "OpenClaw vs NanoClaw vs ZeroClaw", "query_type": "comparison"},
-  {"topic": "DeepSeek R1 vs GPT-5.4", "query_type": "comparison"},
+  {"topic": "Claude 4 vs GPT-5.4 vs DeepSeek V4", "query_type": "comparison"},
   {"topic": "React/Vue/Svelte for frontend in 2026", "query_type": "comparison"},
   {"topic": "Codex CLI vs Claude Code", "query_type": "comparison"},
+
   {"topic": "how to deploy on Fly.io", "query_type": "how_to"},
   {"topic": "how to use Claude Code MCP servers", "query_type": "how_to"},
-  {"topic": "prompting techniques for legal questions", "query_type": "how_to"},
+  {"topic": "how to set up a GLP-1 supplement routine", "query_type": "how_to"},
+
   {"topic": "Google completes Wiz acquisition", "query_type": "breaking_news"},
-  {"topic": "latest news about React 20", "query_type": "breaking_news"},
+  {"topic": "2026 March Madness", "query_type": "breaking_news"},
   {"topic": "kanye west", "query_type": "breaking_news"},
+
   {"topic": "best Claude Code skills and plugins", "query_type": "product"},
   {"topic": "Olmo Hybrid open source model", "query_type": "product"},
+
   {"topic": "what are people saying about OpenClaw security", "query_type": "opinion"},
   {"topic": "thoughts on Rust vs Go for backend in 2026", "query_type": "opinion"},
+
   {"topic": "odds of US recession 2026", "query_type": "prediction"},
   {"topic": "Anthropic IPO odds", "query_type": "prediction"},
+
   {"topic": "explain transformer architecture", "query_type": "concept"},
   {"topic": "what is retrieval augmented generation", "query_type": "concept"},
+
   {"topic": "who acquired Wiz and for how much", "query_type": "factual"},
-  {"topic": "hexagonal diamond Nature paper March 2026", "query_type": "factual"},
-  {"topic": "cutting edge science discoveries Nature last two weeks", "query_type": "factual"}
+  {"topic": "CD40 agonist cancer immunotherapy results", "query_type": "factual"},
+  {"topic": "hexagonal diamond Nature paper March 2026", "query_type": "factual"}
 ]
