@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from shutil import which
@@ -47,6 +48,8 @@ SEARCH_ALIAS = {
     "web": "grounding",
     "xhs": "xiaohongshu",
 }
+
+MAX_SOURCE_FETCHES: dict[str, int] = {"x": 2}
 
 MOCK_AVAILABLE_SOURCES = [
     "reddit",
@@ -147,7 +150,13 @@ def run(
 
     bundle = schema.RetrievalBundle(artifacts={"grounding": []})
 
+    # Fix 2: thread-safe set for sources that returned 429
+    rate_limited_sources: set[str] = set()
+    rate_limit_lock = threading.Lock()
+
     futures = {}
+    # Fix 1: per-source fetch budget
+    source_fetch_count: dict[str, int] = {}
     stream_count = sum(
         1
         for subquery in plan.subqueries
@@ -160,6 +169,13 @@ def run(
             for source in subquery.sources:
                 if source not in available:
                     continue
+                # Fix 1: enforce per-source fetch cap
+                cap = MAX_SOURCE_FETCHES.get(source)
+                if cap is not None:
+                    current = source_fetch_count.get(source, 0)
+                    if current >= cap:
+                        continue
+                    source_fetch_count[source] = current + 1
                 futures[
                     executor.submit(
                         _retrieve_stream,
@@ -172,6 +188,8 @@ def run(
                         runtime=runtime,
                         grounding_provider=grounding_provider,
                         mock=mock,
+                        rate_limited_sources=rate_limited_sources,
+                        rate_limit_lock=rate_limit_lock,
                     )
                 ] = (subquery, source)
 
@@ -197,6 +215,10 @@ def run(
                 if artifact:
                     bundle.artifacts.setdefault("grounding", []).append(artifact)
             except Exception as exc:
+                # Fix 2: share 429 signal so pending futures skip this source
+                if _is_rate_limit_error(exc):
+                    with rate_limit_lock:
+                        rate_limited_sources.add(source)
                 bundle.errors_by_source[source] = str(exc)
 
     items_by_source = _finalize_items_by_source(bundle.items_by_source)
@@ -260,6 +282,13 @@ def _warnings(
     return warnings
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Detect 429 rate-limit errors by status code or message text."""
+    if hasattr(exc, "status_code") and getattr(exc, "status_code", None) == 429:
+        return True
+    return "429" in str(exc)
+
+
 def _retrieve_stream(
     *,
     topic: str,
@@ -271,7 +300,12 @@ def _retrieve_stream(
     runtime: schema.ProviderRuntime,
     grounding_provider: object | None,
     mock: bool,
+    rate_limited_sources: set[str] | None = None,
+    rate_limit_lock: threading.Lock | None = None,
 ) -> tuple[list[dict], dict]:
+    # Early exit if source was rate-limited by a sibling future
+    if rate_limited_sources is not None and source in rate_limited_sources:
+        return [], {}
     from_date, to_date = date_range
     if mock:
         return _mock_stream_results(source, subquery)
