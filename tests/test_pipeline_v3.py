@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from lib import pipeline
 from lib import http
 from lib import schema
+from lib import signals
 
 
 class PipelineV3Tests(unittest.TestCase):
@@ -592,6 +593,126 @@ class TestXHandleFlag(unittest.TestCase):
             x_handle="testuser",
         )
         self.assertEqual("test topic", report.topic)
+
+
+class TestSourceAwarePruning(unittest.TestCase):
+    """R4: Discussion sources should use a lower relevance threshold."""
+
+    def test_reddit_item_survives_pruning_at_002(self):
+        """A Reddit item with local_relevance=0.02 should survive when source='reddit'."""
+        item = schema.SourceItem(
+            item_id="R1",
+            source="reddit",
+            title="Reddit discussion",
+            body="content",
+            url="https://reddit.com/r/test/1",
+            metadata={"local_relevance": 0.02},
+        )
+        result = signals.prune_low_relevance([item], source="reddit")
+        self.assertEqual(len(result), 1, "Reddit item at 0.02 should survive with source='reddit'")
+
+    def test_generic_item_pruned_at_002(self):
+        """A non-discussion item with local_relevance=0.02 should be pruned (default threshold 0.03)."""
+        item = schema.SourceItem(
+            item_id="G1",
+            source="grounding",
+            title="Web article",
+            body="content",
+            url="https://example.com/1",
+            metadata={"local_relevance": 0.02},
+        )
+        # Also include a strong item so fallback (return items) doesn't save it
+        strong = schema.SourceItem(
+            item_id="G2",
+            source="grounding",
+            title="Strong article",
+            body="strong content",
+            url="https://example.com/2",
+            metadata={"local_relevance": 0.10},
+        )
+        result = signals.prune_low_relevance([item, strong], source="grounding")
+        urls = [i.url for i in result]
+        self.assertNotIn("https://example.com/1", urls, "Grounding item at 0.02 should be pruned")
+
+    def test_hackernews_item_survives_pruning_at_002(self):
+        """A HN item with local_relevance=0.02 should survive when source='hackernews'."""
+        item = schema.SourceItem(
+            item_id="HN1",
+            source="hackernews",
+            title="HN post",
+            body="content",
+            url="https://news.ycombinator.com/item?id=1",
+            metadata={"local_relevance": 0.02},
+        )
+        result = signals.prune_low_relevance([item], source="hackernews")
+        self.assertEqual(len(result), 1, "HN item at 0.02 should survive with source='hackernews'")
+
+
+class TestPerSourceQueryAdaptation(unittest.TestCase):
+    """R4: Reddit/HN should use shorter queries in _retrieve_stream."""
+
+    @patch("lib.reddit.search_and_enrich")
+    @patch("lib.reddit.parse_reddit_response")
+    def test_reddit_uses_shorter_query(self, mock_parse, mock_search):
+        """_retrieve_stream for reddit should shorten the search query."""
+        mock_search.return_value = {}
+        mock_parse.return_value = []
+
+        long_query = "latest developments in artificial intelligence safety research"
+        subquery = schema.SubQuery(
+            label="test",
+            search_query=long_query,
+            ranking_query=long_query,
+            sources=["reddit"],
+        )
+
+        pipeline._retrieve_stream(
+            topic=long_query,
+            subquery=subquery,
+            source="reddit",
+            config={"SCRAPECREATORS_API_KEY": "fake"},
+            depth="quick",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime(),
+            grounding_provider=None,
+            mock=False,
+        )
+
+        # The query passed to reddit.search_and_enrich should be shorter
+        actual_query = mock_search.call_args[0][0]
+        word_count = len(actual_query.split())
+        self.assertLessEqual(word_count, 4, f"Reddit query should be <= 4 words, got {word_count}: '{actual_query}'")
+
+    @patch("lib.hackernews.search_hackernews")
+    @patch("lib.hackernews.parse_hackernews_response")
+    def test_hackernews_uses_shorter_query(self, mock_parse, mock_search):
+        """_retrieve_stream for hackernews should shorten the search query."""
+        mock_search.return_value = {}
+        mock_parse.return_value = []
+
+        long_query = "latest developments in artificial intelligence safety research techniques"
+        subquery = schema.SubQuery(
+            label="test",
+            search_query=long_query,
+            ranking_query=long_query,
+            sources=["hackernews"],
+        )
+
+        pipeline._retrieve_stream(
+            topic=long_query,
+            subquery=subquery,
+            source="hackernews",
+            config={},
+            depth="quick",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime(),
+            grounding_provider=None,
+            mock=False,
+        )
+
+        actual_query = mock_search.call_args[0][0]
+        word_count = len(actual_query.split())
+        self.assertLessEqual(word_count, 6, f"HN query should be <= 6 words, got {word_count}: '{actual_query}'")
 
 
 if __name__ == "__main__":

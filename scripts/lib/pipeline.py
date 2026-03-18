@@ -208,7 +208,7 @@ def run(
                     freshness_mode=plan.freshness_mode,
                 )
                 normalized = signals.annotate_stream(normalized, subquery.ranking_query, plan.freshness_mode)
-                normalized = signals.prune_low_relevance(normalized)
+                normalized = signals.prune_low_relevance(normalized, source=source)
                 normalized = dedupe.dedupe_items(normalized)
                 for item in normalized:
                     item.snippet = snippet.extract_best_snippet(item, subquery.ranking_query)
@@ -501,7 +501,7 @@ def _retry_thin_sources(
                 freshness_mode=plan.freshness_mode,
             )
             normalized = signals.annotate_stream(normalized, retry_subquery.ranking_query, plan.freshness_mode)
-            normalized = signals.prune_low_relevance(normalized)
+            normalized = signals.prune_low_relevance(normalized, source=source)
             normalized = dedupe.dedupe_items(normalized)
             for item in normalized:
                 item.snippet = snippet.extract_best_snippet(item, retry_subquery.ranking_query)
@@ -539,6 +539,15 @@ def _retrieve_stream(
     from_date, to_date = date_range
     if mock:
         return _mock_stream_results(source, subquery)
+
+    # Adapt search query per source: discussion platforms need shorter queries
+    if source == "reddit":
+        search_query = query.extract_core_subject(subquery.search_query, max_words=4)
+    elif source == "hackernews":
+        search_query = query.extract_core_subject(subquery.search_query, max_words=6)
+    else:
+        search_query = subquery.search_query
+
     if source == "grounding":
         if not grounding_provider:
             raise RuntimeError("Grounding requested but Google API key is unavailable.")
@@ -552,7 +561,7 @@ def _retrieve_stream(
         )
     if source == "reddit":
         result = reddit.search_and_enrich(
-            subquery.search_query,
+            search_query,
             from_date,
             to_date,
             depth=depth,
@@ -562,14 +571,14 @@ def _retrieve_stream(
     if source == "x":
         backend = runtime.x_search_backend or env.get_x_source(config)
         if backend == "bird":
-            result = bird_x.search_x(subquery.search_query, from_date, to_date, depth=depth)
-            return bird_x.parse_bird_response(result, query=subquery.search_query), {}
+            result = bird_x.search_x(search_query, from_date, to_date, depth=depth)
+            return bird_x.parse_bird_response(result, query=search_query), {}
         if backend == "xai":
             model = config.get("LAST30DAYS_X_MODEL") or config.get("XAI_MODEL_PIN") or providers.XAI_DEFAULT
             result = xai_x.search_x(
                 config["XAI_API_KEY"],
                 model,
-                subquery.search_query,
+                search_query,
                 from_date,
                 to_date,
                 depth=depth,
@@ -577,11 +586,11 @@ def _retrieve_stream(
             return xai_x.parse_x_response(result), {}
         raise RuntimeError("No X backend is available.")
     if source == "youtube":
-        result = youtube_yt.search_and_transcribe(subquery.search_query, from_date, to_date, depth=depth)
+        result = youtube_yt.search_and_transcribe(search_query, from_date, to_date, depth=depth)
         return youtube_yt.parse_youtube_response(result), {}
     if source == "tiktok":
         result = tiktok.search_and_enrich(
-            subquery.search_query,
+            search_query,
             from_date,
             to_date,
             depth=depth,
@@ -590,7 +599,7 @@ def _retrieve_stream(
         return tiktok.parse_tiktok_response(result), {}
     if source == "instagram":
         result = instagram.search_and_enrich(
-            subquery.search_query,
+            search_query,
             from_date,
             to_date,
             depth=depth,
@@ -598,20 +607,20 @@ def _retrieve_stream(
         )
         return instagram.parse_instagram_response(result), {}
     if source == "hackernews":
-        result = hackernews.search_hackernews(subquery.search_query, from_date, to_date, depth=depth)
-        return hackernews.parse_hackernews_response(result, query=subquery.search_query), {}
+        result = hackernews.search_hackernews(search_query, from_date, to_date, depth=depth)
+        return hackernews.parse_hackernews_response(result, query=search_query), {}
     if source == "bluesky":
-        result = bluesky.search_bluesky(subquery.search_query, from_date, to_date, depth=depth, config=config)
+        result = bluesky.search_bluesky(search_query, from_date, to_date, depth=depth, config=config)
         return bluesky.parse_bluesky_response(result), {}
     if source == "truthsocial":
-        result = truthsocial.search_truthsocial(subquery.search_query, from_date, to_date, depth=depth, config=config)
+        result = truthsocial.search_truthsocial(search_query, from_date, to_date, depth=depth, config=config)
         return truthsocial.parse_truthsocial_response(result), {}
     if source == "polymarket":
-        result = polymarket.search_polymarket(subquery.search_query, from_date, to_date, depth=depth)
-        return polymarket.parse_polymarket_response(result, topic=subquery.search_query), {}
+        result = polymarket.search_polymarket(search_query, from_date, to_date, depth=depth)
+        return polymarket.parse_polymarket_response(result, topic=search_query), {}
     if source == "xiaohongshu":
         return xiaohongshu_api.search_feeds(
-            subquery.search_query,
+            search_query,
             from_date,
             to_date,
             env.get_xiaohongshu_api_base(config),

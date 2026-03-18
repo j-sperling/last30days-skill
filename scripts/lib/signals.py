@@ -149,14 +149,23 @@ def annotate_stream(
     return sorted(items, key=lambda item: item.metadata["local_rank_score"], reverse=True)
 
 
+DISCUSSION_SOURCES: frozenset[str] = frozenset({"reddit", "hackernews"})
+
+
 def prune_low_relevance(
     items: list[schema.SourceItem],
     minimum: float = 0.03,
+    source: str | None = None,
 ) -> list[schema.SourceItem]:
-    """Drop obviously weak lexical matches when stronger evidence exists."""
+    """Drop obviously weak lexical matches when stronger evidence exists.
+
+    Discussion sources (reddit, hackernews) use a lower threshold because their
+    titles have low token overlap with verbose subquery strings.
+    """
+    threshold = 0.01 if source in DISCUSSION_SOURCES else minimum
     filtered = [
         item
         for item in items
-        if float(item.metadata.get("local_relevance") or 0.0) >= minimum
+        if float(item.metadata.get("local_relevance") or 0.0) >= threshold
     ]
     return filtered or items
