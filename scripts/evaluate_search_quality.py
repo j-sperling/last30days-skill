@@ -23,14 +23,24 @@ from lib import schema
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_TOPICS = [
-    ("nano banana pro prompting", "product"),
-    ("codex vs claude code", "comparison"),
-    ("openclaw vs nanoclaw vs ironclaw", "comparison"),
-    ("anthropic odds", "prediction"),
-    ("kanye west", "breaking_news"),
-    ("remotion animations for Claude Code", "how_to"),
-]
+EVAL_TOPICS_FILE = REPO_ROOT / "fixtures" / "eval_topics.json"
+
+
+def _load_default_topics() -> list[tuple[str, str]]:
+    if EVAL_TOPICS_FILE.exists():
+        rows = json.loads(EVAL_TOPICS_FILE.read_text())
+        return [(row["topic"], row["query_type"]) for row in rows]
+    return [
+        ("nano banana pro prompting", "product"),
+        ("codex vs claude code", "comparison"),
+        ("openclaw vs nanoclaw vs ironclaw", "comparison"),
+        ("anthropic odds", "prediction"),
+        ("kanye west", "breaking_news"),
+        ("remotion animations for Claude Code", "how_to"),
+    ]
+
+
+DEFAULT_TOPICS = _load_default_topics()
 DEFAULT_SEARCH = ""
 DEFAULT_JUDGE_MODEL = "gemini-3.1-flash-lite-preview"
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"

@@ -1,0 +1,21 @@
+[
+  {"topic": "openclaw vs nanoclaw vs ironclaw", "query_type": "comparison"},
+  {"topic": "DeepSeek R1 vs GPT-5", "query_type": "comparison"},
+  {"topic": "React/Vue/Svelte for frontend in 2026", "query_type": "comparison"},
+  {"topic": "how to deploy on Fly.io", "query_type": "how_to"},
+  {"topic": "prompting techniques for chatgpt for legal questions", "query_type": "how_to"},
+  {"topic": "latest news about React 20", "query_type": "breaking_news"},
+  {"topic": "kanye west", "query_type": "breaking_news"},
+  {"topic": "best clawdbot use cases", "query_type": "product"},
+  {"topic": "nano banana pro prompting", "query_type": "product"},
+  {"topic": "what are people saying about DeepSeek R1", "query_type": "opinion"},
+  {"topic": "thoughts on Rust vs Go for backend in 2026", "query_type": "opinion"},
+  {"topic": "odds of recession", "query_type": "prediction"},
+  {"topic": "anthropic odds", "query_type": "prediction"},
+  {"topic": "explain transformer architecture", "query_type": "concept"},
+  {"topic": "what is retrieval augmented generation", "query_type": "factual"},
+  {"topic": "who acquired Wiz", "query_type": "factual"},
+  {"topic": "remotion animations for Claude Code", "query_type": "how_to"},
+  {"topic": "codex vs claude code", "query_type": "comparison"},
+  {"topic": "top claude code skills", "query_type": "product"}
+]

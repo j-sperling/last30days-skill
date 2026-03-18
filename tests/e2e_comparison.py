@@ -22,20 +22,23 @@ V2_SCRIPT = str(
     / ".claude/plugins/cache/last30days/last30days/2.9.5/scripts/last30days.py"
 )
 
-QUERIES = [
-    ("openclaw vs. nanoclaw vs. ironclaw", "comparison"),
-    ("DeepSeek R1 vs GPT-5", "comparison"),
-    ("React/Vue/Svelte for frontend in 2026", "comparison"),
-    ("how to deploy on Fly.io", "how_to"),
-    ("latest news about React 20", "breaking_news"),
-    ("best clawdbot use cases", "product"),
-    ("what are people saying about DeepSeek R1", "opinion"),
-    ("kanye west", "breaking_news"),
-    ("top claude code skills", "product"),
-    ("prompting techniques for chatgpt for legal questions", "how_to"),
-    ("odds of recession", "prediction"),
-    ("explain transformer architecture", "concept"),
-]
+EVAL_TOPICS_FILE = REPO / "fixtures" / "eval_topics.json"
+
+
+def _load_queries() -> list[tuple[str, str]]:
+    if EVAL_TOPICS_FILE.exists():
+        rows = json.loads(EVAL_TOPICS_FILE.read_text())
+        return [(row["topic"], row["query_type"]) for row in rows]
+    return [
+        ("openclaw vs nanoclaw vs ironclaw", "comparison"),
+        ("how to deploy on Fly.io", "how_to"),
+        ("kanye west", "breaking_news"),
+        ("odds of recession", "prediction"),
+        ("explain transformer architecture", "concept"),
+    ]
+
+
+QUERIES = _load_queries()
 
 
 def run_query(script: str, topic: str, timeout: int = 180) -> dict:
