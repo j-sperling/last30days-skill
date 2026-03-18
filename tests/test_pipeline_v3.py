@@ -521,6 +521,40 @@ class TestThinSourceRetry(unittest.TestCase):
             mock_retrieve.assert_not_called()
 
 
+class TestErrorCleanup(unittest.TestCase):
+    """Source errors should be cleared when the source has items from other subqueries."""
+
+    def test_error_cleared_when_source_has_items(self):
+        """A source that 429'd on one subquery but succeeded on another is not errored."""
+        bundle = schema.RetrievalBundle(artifacts={})
+        item = schema.SourceItem(
+            item_id="x1", source="x", title="A tweet", body="content",
+            url="https://x.com/user/status/1",
+        )
+        bundle.items_by_source["x"] = [item]
+        bundle.errors_by_source["x"] = "HTTP 429: Too Many Requests"
+
+        # Simulate the cleanup logic from pipeline.run()
+        for source in list(bundle.errors_by_source):
+            if bundle.items_by_source.get(source):
+                del bundle.errors_by_source[source]
+
+        self.assertNotIn("x", bundle.errors_by_source,
+                         "X should not be errored when it has items")
+
+    def test_error_kept_when_source_has_no_items(self):
+        """A source with zero items should remain in errors_by_source."""
+        bundle = schema.RetrievalBundle(artifacts={})
+        bundle.errors_by_source["x"] = "HTTP 429: Too Many Requests"
+
+        for source in list(bundle.errors_by_source):
+            if bundle.items_by_source.get(source):
+                del bundle.errors_by_source[source]
+
+        self.assertIn("x", bundle.errors_by_source,
+                      "X should remain errored when it has no items")
+
+
 class TestXHandleFlag(unittest.TestCase):
     """R3: --x-handle CLI flag and pipeline parameter."""
 

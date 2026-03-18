@@ -255,6 +255,12 @@ def run(
         settings=settings,
     )
 
+    # Clear errors for sources that returned items despite partial failures.
+    # A source that 429'd on one subquery but succeeded on another is not "errored".
+    for source in list(bundle.errors_by_source):
+        if bundle.items_by_source.get(source):
+            del bundle.errors_by_source[source]
+
     items_by_source = _finalize_items_by_source(bundle.items_by_source)
     candidates = weighted_rrf(bundle.items_by_source_and_query, plan, pool_limit=settings["pool_limit"])
     ranked_candidates = rerank.rerank_candidates(
