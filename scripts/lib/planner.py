@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-from . import query, schema
+from . import providers, query, schema
 
 ALLOWED_INTENTS = {
     "factual",
@@ -77,7 +77,7 @@ def plan_query(
     available_sources: list[str],
     requested_sources: list[str] | None,
     depth: str,
-    provider: object | None,
+    provider: providers.ReasoningClient | None,
     model: str | None,
 ) -> schema.QueryPlan:
     """Create a query plan. Comparison queries with extractable entities use a

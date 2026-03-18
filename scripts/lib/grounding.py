@@ -10,7 +10,7 @@ from . import dates, providers, schema
 
 
 def grounded_search(
-    provider: object,
+    provider: providers.ReasoningClient,
     *,
     model: str,
     topic: str,
@@ -97,7 +97,7 @@ def _items_from_grounding_payload(
     return items
 
 
-def _refine_with_url_context(provider: object, model: str, subquery: schema.SubQuery, items: list[dict]) -> None:
+def _refine_with_url_context(provider: providers.ReasoningClient, model: str, subquery: schema.SubQuery, items: list[dict]) -> None:
     urls = [item["url"] for item in items[:3]]
     if not urls:
         return

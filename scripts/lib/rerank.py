@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from . import schema
+from . import providers, schema
 
 INTENT_SCORING_HINTS: dict[str, str] = {
     "comparison": (
@@ -48,7 +48,7 @@ def rerank_candidates(
     topic: str,
     plan: schema.QueryPlan,
     candidates: list[schema.Candidate],
-    provider: object | None,
+    provider: providers.ReasoningClient | None,
     model: str | None,
     shortlist_size: int,
 ) -> list[schema.Candidate]:

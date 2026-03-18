@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from typing import Any
 
 from . import env, http, schema
@@ -322,6 +323,8 @@ def extract_gemini_text(payload: dict[str, Any]) -> str:
             text = part.get("text")
             if text:
                 return text
+    if payload:
+        print(f"[Providers] extract_gemini_text: no text in payload keys: {list(payload.keys())}", file=sys.stderr)
     return ""
 
 
@@ -345,6 +348,8 @@ def extract_openai_text(payload: dict[str, Any]) -> str:
             message = item.get("message") or {}
             if isinstance(message, dict) and isinstance(message.get("content"), str):
                 return message["content"]
+    if payload:
+        print(f"[Providers] extract_openai_text: no text in payload keys: {list(payload.keys())}", file=sys.stderr)
     return ""
 
 
@@ -362,6 +367,7 @@ def _parse_sse_chunk(chunk: str) -> dict[str, Any] | None:
     try:
         return json.loads(data)
     except json.JSONDecodeError:
+        print(f"[Providers] _parse_sse_chunk: invalid JSON: {data[:100]}", file=sys.stderr)
         return None
 
 
@@ -403,4 +409,6 @@ def _parse_codex_stream(raw: str) -> dict[str, Any]:
                 }
             ]
         }
+    if raw.strip():
+        print(f"[Providers] _parse_codex_stream: received {len(raw)} bytes but could not extract text", file=sys.stderr)
     return {}
