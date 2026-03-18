@@ -12,6 +12,7 @@ variants/open/references/research.md
 .DS_Store
 .claude/
 .entire/
+.memsearch/
 .venv/
 __pycache__/
 *.pyc
