@@ -308,11 +308,16 @@ def fetch_transcripts_parallel(
                 vid = futures[future]
                 try:
                     results[vid] = future.result()
-                except Exception:
+                except (OSError, subprocess.SubprocessError) as exc:
+                    _log(f"Transcript fetch error for {vid}: {exc}")
+                    results[vid] = None
+                except Exception as exc:
+                    _log(f"Unexpected transcript error for {vid}: {type(exc).__name__}: {exc}")
                     results[vid] = None
 
     got = sum(1 for v in results.values() if v)
-    _log(f"Got transcripts for {got}/{len(video_ids)} videos")
+    errors = sum(1 for v in results.values() if v is None)
+    _log(f"Got transcripts for {got}/{len(video_ids)} videos ({errors} failed)")
     return results
 
 

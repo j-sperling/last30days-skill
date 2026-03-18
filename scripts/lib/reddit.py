@@ -280,6 +280,11 @@ def _global_search(
             headers["User-Agent"] = http.USER_AGENT
             data = http.get(url, headers=headers, timeout=30, retries=2)
             return data.get("posts", data.get("data", []))
+        except http.HTTPError as e:
+            if e.status_code and e.status_code in (401, 403):
+                raise
+            _log(f"Global search error (urllib): {e}")
+            return []
         except Exception as e:
             _log(f"Global search error (urllib): {e}")
             return []
@@ -294,6 +299,11 @@ def _global_search(
         resp.raise_for_status()
         data = resp.json()
         return data.get("posts", data.get("data", []))
+    except _requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code in (401, 403):
+            raise http.HTTPError(f"Auth error: {e}", e.response.status_code)
+        _log(f"Global search error: {e}")
+        return []
     except Exception as e:
         _log(f"Global search error: {e}")
         return []

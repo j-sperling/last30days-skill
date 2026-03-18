@@ -52,19 +52,7 @@ def parse_search_flag(raw: str) -> list[str]:
         if not source:
             continue
         normalized = pipeline.SEARCH_ALIAS.get(source, source)
-        if normalized not in {
-            "reddit",
-            "x",
-            "youtube",
-            "tiktok",
-            "instagram",
-            "hackernews",
-            "bluesky",
-            "truthsocial",
-            "polymarket",
-            "grounding",
-            "xiaohongshu",
-        }:
+        if normalized not in pipeline.MOCK_AVAILABLE_SOURCES:
             raise SystemExit(f"Unknown search source: {source}")
         if normalized not in sources:
             sources.append(normalized)
