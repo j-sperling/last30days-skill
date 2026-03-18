@@ -146,6 +146,26 @@ class PlannerV3Tests(unittest.TestCase):
         self.assertGreater(len(sources), 3,
                            f"how_to should include >3 sources, got {len(sources)}: {sources}")
 
+    def test_ncaa_tournament_is_breaking_news(self):
+        intent = planner._infer_intent("NCAA tournament brackets")
+        self.assertEqual("breaking_news", intent)
+
+    def test_march_madness_is_breaking_news(self):
+        intent = planner._infer_intent("2026 March Madness")
+        self.assertEqual("breaking_news", intent)
+
+    def test_factual_plan_has_at_most_2_subqueries(self):
+        plan = planner.plan_query(
+            topic="who acquired Wiz",
+            available_sources=["grounding", "reddit", "x", "hackernews"],
+            requested_sources=None,
+            depth="default",
+            provider=None,
+            model=None,
+        )
+        self.assertEqual("factual", plan.intent)
+        self.assertLessEqual(len(plan.subqueries), 2)
+
     def test_default_how_to_prefers_longform_video_over_shortform(self):
         plan = planner.plan_query(
             topic="how to deploy on Fly.io",

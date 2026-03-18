@@ -69,8 +69,6 @@ DEFAULT_INTENT_CAPABILITIES = {
     "comparison": {"discussion", "video", "web", "reference", "social", "link"},
     "how_to": {"discussion", "video", "web", "reference", "link"},
 }
-MAX_SUBQUERIES = 4
-
 
 def plan_query(
     *,
@@ -404,6 +402,8 @@ def _infer_intent(topic: str) -> str:
         return "product"
     if re.search(r"\b(explain|concept|protocol|architecture|what does)\b", text):
         return "concept"
+    if re.search(r"\b(tournament|championship|playoffs|march madness|world cup|olympics|super bowl|final four|ceremony|awards|keynote)\b", text):
+        return "breaking_news"
     return "breaking_news"
 
 
@@ -500,7 +500,11 @@ def _should_force_deterministic_plan(topic: str) -> bool:
 
 
 def _max_subqueries(intent: str) -> int:
-    return MAX_SUBQUERIES if intent == "comparison" else 3
+    if intent == "comparison":
+        return 4
+    if intent in {"factual", "concept"}:
+        return 2
+    return 3
 
 
 def _default_sources_for_intent(intent: str, available_sources: list[str]) -> list[str]:
