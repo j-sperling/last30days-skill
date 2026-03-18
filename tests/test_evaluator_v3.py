@@ -195,7 +195,7 @@ class EvaluatorV3Tests(unittest.TestCase):
             )
             summary = (tmp_path / "summary.md").read_text()
             metrics = json.loads((tmp_path / "metrics.json").read_text())
-            self.assertIn("| topic a | 0.10 | 0.30 |", summary)
+            self.assertIn("| topic a | 0.10 | 0.30 | 0.20 | 0.40 | 0.50 | 0.80 | 0.60 | 0.70 |", summary)
             self.assertEqual("HEAD~1", metrics["baseline"])
 
 

@@ -415,21 +415,36 @@ def write_summary(output_dir: Path, baseline_label: str, candidate_label: str, s
         f"- Candidate: `{candidate_label}`",
         f"- Generated: {payload['generated_at']}",
         "",
-        "| Topic | Base P@5 | Cand P@5 | Base nDCG@5 | Cand nDCG@5 | Jaccard | Retention |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Topic | Base P@5 | Cand P@5 | Base nDCG@5 | Cand nDCG@5 | Base SrcR | Cand SrcR | Jaccard | Retention |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in summaries:
         lines.append(
-            "| {topic} | {bp:.2f} | {cp:.2f} | {bn:.2f} | {cn:.2f} | {jac:.2f} | {ret:.2f} |".format(
+            "| {topic} | {bp:.2f} | {cp:.2f} | {bn:.2f} | {cn:.2f} | {bsr:.2f} | {csr:.2f} | {jac:.2f} | {ret:.2f} |".format(
                 topic=row["topic"],
                 bp=row["baseline"]["precision_at_5"],
                 cp=row["candidate"]["precision_at_5"],
                 bn=row["baseline"]["ndcg_at_5"],
                 cn=row["candidate"]["ndcg_at_5"],
+                bsr=row["baseline"]["source_coverage_recall"],
+                csr=row["candidate"]["source_coverage_recall"],
                 jac=row["stability"]["overall_jaccard"],
                 ret=row["stability"]["overall_retention_vs_baseline"],
             )
         )
+
+    lines.append("")
+    lines.append("## Per-Source Item Counts")
+    lines.append("")
+    for row in summaries:
+        per_source = row["stability"].get("per_source")
+        if per_source:
+            lines.append(f"### {row['topic']}")
+            for src in sorted(per_source):
+                v = per_source[src]
+                lines.append(f"- {src}: baseline={v['baseline_count']}, candidate={v['candidate_count']}")
+            lines.append("")
+
     (output_dir / "summary.md").write_text("\n".join(lines) + "\n")
 
 
@@ -477,7 +492,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", default="tmp/search-quality")
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
     parser.add_argument("--timeout", type=int, default=240)
-    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--limit", type=int, default=30)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--topics-file")
