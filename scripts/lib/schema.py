@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, is_dataclass
-from typing import Any
+from typing import Any, Literal
 
 
 def _drop_none(value: Any) -> Any:
@@ -21,18 +21,18 @@ def _drop_none(value: Any) -> Any:
     return value
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProviderRuntime:
     """Resolved runtime provider selection."""
 
-    reasoning_provider: str
+    reasoning_provider: Literal["gemini", "openai", "xai"]
     planner_model: str
     rerank_model: str
     grounding_model: str
-    x_search_backend: str | None = None
+    x_search_backend: Literal["xai", "bird"] | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class SubQuery:
     """Planner-emitted retrieval unit."""
 
@@ -41,6 +41,12 @@ class SubQuery:
     ranking_query: str
     sources: list[str]
     weight: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not self.sources:
+            raise ValueError("SubQuery must have at least one source")
+        if self.weight <= 0:
+            raise ValueError(f"SubQuery weight must be positive, got {self.weight}")
 
 
 @dataclass
@@ -68,7 +74,7 @@ class SourceItem:
     author: str | None = None
     container: str | None = None
     published_at: str | None = None
-    date_confidence: str = "low"
+    date_confidence: Literal["high", "med", "low"] = "low"
     engagement: dict[str, float | int] = field(default_factory=dict)
     relevance_hint: float = 0.5
     why_relevant: str = ""
@@ -112,7 +118,7 @@ class Cluster:
     representative_ids: list[str]
     sources: list[str]
     score: float
-    uncertainty: str | None = None
+    uncertainty: Literal["single-source", "thin-evidence"] | None = None
 
 
 @dataclass
