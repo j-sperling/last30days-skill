@@ -138,17 +138,17 @@ def annotate_stream(
 ) -> list[schema.SourceItem]:
     """Attach local scoring metadata and return items sorted by local_rank_score."""
     engagement_scores = normalize([engagement_raw(item) for item in items])
-    for item, engagement_score in zip(items, engagement_scores, strict=True):
-        item.metadata["local_relevance"] = local_relevance(item, ranking_query)
-        item.metadata["freshness"] = freshness(item, freshness_mode)
-        item.metadata["engagement_score"] = engagement_score
-        item.metadata["source_quality"] = source_quality(item.source)
-        item.metadata["local_rank_score"] = (
-            0.65 * item.metadata["local_relevance"]
-            + 0.25 * (item.metadata["freshness"] / 100.0)
-            + 0.10 * ((engagement_score or 0) / 100.0)
+    for item, eng_score in zip(items, engagement_scores, strict=True):
+        item.local_relevance = local_relevance(item, ranking_query)
+        item.freshness = freshness(item, freshness_mode)
+        item.engagement_score = eng_score
+        item.source_quality = source_quality(item.source)
+        item.local_rank_score = (
+            0.65 * item.local_relevance
+            + 0.25 * (item.freshness / 100.0)
+            + 0.10 * ((eng_score or 0) / 100.0)
         )
-    return sorted(items, key=lambda item: item.metadata["local_rank_score"], reverse=True)
+    return sorted(items, key=lambda item: item.local_rank_score or 0, reverse=True)
 
 
 def prune_low_relevance(
@@ -159,6 +159,6 @@ def prune_low_relevance(
     filtered = [
         item
         for item in items
-        if float(item.metadata.get("local_relevance") or 0.0) >= minimum
+        if (item.local_relevance if item.local_relevance is not None else 0.0) >= minimum
     ]
     return filtered or items

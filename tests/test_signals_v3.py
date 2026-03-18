@@ -115,7 +115,7 @@ class SignalsV3Tests(unittest.TestCase):
             title="Deploy to Fly.io",
             body="Step-by-step Fly.io deploy guide.",
             url="https://example.com/strong",
-            metadata={"local_relevance": 0.3},
+            local_relevance=0.3,
         )
         weak = schema.SourceItem(
             item_id="weak",
@@ -123,7 +123,7 @@ class SignalsV3Tests(unittest.TestCase):
             title="Battlefield update",
             body="Patch notes.",
             url="https://example.com/weak",
-            metadata={"local_relevance": 0.0},
+            local_relevance=0.0,
         )
         pruned = signals.prune_low_relevance([strong, weak], minimum=0.1)
         self.assertEqual(["strong"], [item.item_id for item in pruned])
@@ -440,8 +440,8 @@ class SignalsV3Tests(unittest.TestCase):
             ranking_query="trending topic discussion",
             freshness_mode="balanced_recent",
         )
-        high_score = ranked[0].metadata["local_rank_score"]
-        low_score = ranked[1].metadata["local_rank_score"]
+        high_score = ranked[0].local_rank_score
+        low_score = ranked[1].local_rank_score
         gap = high_score - low_score
         # With 10% engagement weight, the gap should be >= 0.06
         # With 5% weight, gap would be ~0.04

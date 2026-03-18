@@ -308,7 +308,7 @@ def _normalize_score_dedupe(
 def _finalize_items_by_source(items_by_source_raw: dict[str, list[schema.SourceItem]]) -> dict[str, list[schema.SourceItem]]:
     finalized = {}
     for source, items in items_by_source_raw.items():
-        items = sorted(items, key=lambda item: item.metadata.get("local_rank_score", 0.0), reverse=True)
+        items = sorted(items, key=lambda item: item.local_rank_score or 0.0, reverse=True)
         finalized[source] = dedupe.dedupe_items(items)
     return finalized
 

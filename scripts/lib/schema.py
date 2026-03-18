@@ -80,6 +80,12 @@ class SourceItem:
     why_relevant: str = ""
     snippet: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Signal fields populated by signals.annotate_stream (after construction)
+    local_relevance: float | None = None
+    freshness: int | None = None
+    engagement_score: float | None = None
+    source_quality: float | None = None
+    local_rank_score: float | None = None
 
 
 @dataclass
@@ -193,6 +199,7 @@ def query_plan_from_dict(payload: dict[str, Any]) -> QueryPlan:
 
 
 def source_item_from_dict(payload: dict[str, Any]) -> SourceItem:
+    meta = payload.get("metadata") or {}
     return SourceItem(
         item_id=payload["item_id"],
         source=payload["source"],
@@ -207,7 +214,12 @@ def source_item_from_dict(payload: dict[str, Any]) -> SourceItem:
         relevance_hint=float(payload.get("relevance_hint") or 0.5),
         why_relevant=payload.get("why_relevant") or "",
         snippet=payload.get("snippet") or "",
-        metadata=dict(payload.get("metadata") or {}),
+        metadata=dict(meta),
+        local_relevance=payload.get("local_relevance") or meta.get("local_relevance"),
+        freshness=payload.get("freshness") or meta.get("freshness"),
+        engagement_score=payload.get("engagement_score") or meta.get("engagement_score"),
+        source_quality=payload.get("source_quality") or meta.get("source_quality"),
+        local_rank_score=payload.get("local_rank_score") or meta.get("local_rank_score"),
     )
 
 

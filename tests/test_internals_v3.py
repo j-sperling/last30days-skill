@@ -331,12 +331,12 @@ class TestAnnotateStream(unittest.TestCase):
             _item(engagement={"score": 100, "num_comments": 50, "upvote_ratio": 0.9}),
         ]
         annotated = signals.annotate_stream(items, "test query", "balanced_recent")
-        meta = annotated[0].metadata
-        self.assertIn("local_relevance", meta)
-        self.assertIn("freshness", meta)
-        self.assertIn("engagement_score", meta)
-        self.assertIn("source_quality", meta)
-        self.assertIn("local_rank_score", meta)
+        item = annotated[0]
+        self.assertIsNotNone(item.local_relevance)
+        self.assertIsNotNone(item.freshness)
+        self.assertIsNotNone(item.engagement_score)
+        self.assertIsNotNone(item.source_quality)
+        self.assertIsNotNone(item.local_rank_score)
 
     def test_sorted_by_local_rank_score(self):
         items = [
@@ -358,15 +358,15 @@ class TestPruneLowRelevance(unittest.TestCase):
             _item(item_id="good"),
             _item(item_id="bad"),
         ]
-        items[0].metadata["local_relevance"] = 0.8
-        items[1].metadata["local_relevance"] = 0.01
+        items[0].local_relevance = 0.8
+        items[1].local_relevance = 0.01
         result = signals.prune_low_relevance(items, minimum=0.1)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].item_id, "good")
 
     def test_keeps_all_if_all_below_minimum(self):
         items = [_item(item_id="only")]
-        items[0].metadata["local_relevance"] = 0.05
+        items[0].local_relevance = 0.05
         result = signals.prune_low_relevance(items, minimum=0.1)
         self.assertEqual(len(result), 1)  # fallback keeps all
 

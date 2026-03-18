@@ -59,9 +59,9 @@ def weighted_rrf(
         for rank, item in enumerate(items, start=1):
             key = candidate_key(item)
             score = weight / (RRF_K + rank)
-            item_local_relevance = float(item.metadata.get("local_relevance", item.relevance_hint))
-            item_freshness = int(item.metadata.get("freshness", 0))
-            item_source_quality = float(item.metadata.get("source_quality", 0.6))
+            item_local_relevance = item.local_relevance if item.local_relevance is not None else float(item.metadata.get("local_relevance", item.relevance_hint))
+            item_freshness = item.freshness if item.freshness is not None else int(item.metadata.get("freshness", 0))
+            item_source_quality = item.source_quality if item.source_quality is not None else float(item.metadata.get("source_quality", 0.6))
             if key not in candidates:
                 candidates[key] = schema.Candidate(
                     candidate_id=key,
@@ -74,7 +74,7 @@ def weighted_rrf(
                     native_ranks={f"{label}:{source}": rank},
                     local_relevance=item_local_relevance,
                     freshness=item_freshness,
-                    engagement=item.metadata.get("engagement_score"),
+                    engagement=item.engagement_score if item.engagement_score is not None else item.metadata.get("engagement_score"),
                     source_quality=item_source_quality,
                     rrf_score=score,
                     sources=[item.source],
@@ -101,10 +101,11 @@ def weighted_rrf(
                 item_local_relevance,
             )
             candidate.freshness = max(candidate.freshness, item_freshness)
+            item_eng = item.engagement_score if item.engagement_score is not None else item.metadata.get("engagement_score")
             if candidate.engagement is None:
-                candidate.engagement = item.metadata.get("engagement_score")
-            elif item.metadata.get("engagement_score") is not None:
-                candidate.engagement = max(candidate.engagement, item.metadata["engagement_score"])
+                candidate.engagement = item_eng
+            elif item_eng is not None:
+                candidate.engagement = max(candidate.engagement, item_eng)
             candidate.source_quality = max(
                 candidate.source_quality,
                 item_source_quality,
