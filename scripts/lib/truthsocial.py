@@ -21,10 +21,7 @@ DEPTH_CONFIG = {
 
 
 def _log(msg: str):
-    """Log to stderr (only in TTY mode to avoid cluttering Claude Code output)."""
-    if sys.stderr.isatty():
-        sys.stderr.write(f"[TruthSocial] {msg}\n")
-        sys.stderr.flush()
+    http.source_log("TruthSocial", msg)
 
 
 def _strip_html(html: str) -> str:

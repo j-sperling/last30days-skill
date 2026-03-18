@@ -27,10 +27,7 @@ _session_error: Optional[str] = None
 
 
 def _log(msg: str):
-    """Log to stderr (only in TTY mode to avoid cluttering Claude Code output)."""
-    if sys.stderr.isatty():
-        sys.stderr.write(f"[Bluesky] {msg}\n")
-        sys.stderr.flush()
+    http.source_log("Bluesky", msg)
 
 
 def _create_session(handle: str, app_password: str) -> Optional[str]:

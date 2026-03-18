@@ -8,10 +8,12 @@ from typing import Any, Dict, List, Optional
 from . import http
 
 
+def _log(msg: str):
+    http.source_log("xAI", msg, tty_only=False)
+
+
 def _log_error(msg: str):
-    """Log error to stderr."""
-    sys.stderr.write(f"[X ERROR] {msg}\n")
-    sys.stderr.flush()
+    http.source_log("xAI ERROR", msg, tty_only=False)
 
 # xAI uses responses endpoint with Agent Tools API
 XAI_RESPONSES_URL = "https://api.x.ai/v1/responses"

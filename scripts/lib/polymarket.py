@@ -33,10 +33,7 @@ RESULT_CAP = {
 
 
 def _log(msg: str):
-    """Log to stderr (only in TTY mode to avoid cluttering Claude Code output)."""
-    if sys.stderr.isatty():
-        sys.stderr.write(f"[PM] {msg}\n")
-        sys.stderr.flush()
+    http.source_log("PM", msg)
 
 
 def _extract_core_subject(topic: str) -> str:

@@ -188,29 +188,40 @@ class XAIClient(ReasoningClient):
         return extract_openai_text(response)
 
 
-def mock_runtime(config: dict[str, Any], depth: str) -> schema.ProviderRuntime:
-    """Resolve model pins for mock mode without requiring live credentials."""
-    provider_name = (config.get("LAST30DAYS_REASONING_PROVIDER") or "gemini").lower()
-    if provider_name == "auto":
-        provider_name = "gemini"
+_MODEL_DEFAULTS: dict[str, tuple[str, str]] = {
+    "gemini": (GEMINI_FLASH_LITE, GEMINI_FLASH_LITE),
+    "openai": (OPENAI_DEFAULT, OPENAI_DEFAULT),
+    "xai": (XAI_DEFAULT, XAI_DEFAULT),
+}
 
-    planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or GEMINI_FLASH_LITE
-    rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or (GEMINI_PRO if depth == "deep" else GEMINI_FLASH_LITE)
+
+def _resolve_model_pins(config: dict[str, Any], depth: str, provider_name: str) -> tuple[str, str, str]:
+    """Resolve planner, rerank, and grounding model pins for a provider."""
+    default_planner, default_rerank = _MODEL_DEFAULTS.get(provider_name, (GEMINI_FLASH_LITE, GEMINI_FLASH_LITE))
+    if depth == "deep" and provider_name == "gemini":
+        default_rerank = GEMINI_PRO
+
+    planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or default_planner
+    rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or default_rerank
     grounding_model = config.get("LAST30DAYS_GROUNDING_MODEL") or GEMINI_FLASH_LITE
     _require_gemini_31_preview(grounding_model, role="grounding")
 
     if provider_name == "gemini":
         _require_gemini_31_preview(planner_model, role="planner")
         _require_gemini_31_preview(rerank_model, role="rerank")
-    elif provider_name == "openai":
-        planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or OPENAI_DEFAULT
-        rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or OPENAI_DEFAULT
-    elif provider_name == "xai":
-        planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or XAI_DEFAULT
-        rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or XAI_DEFAULT
-    else:
+
+    return planner_model, rerank_model, grounding_model
+
+
+def mock_runtime(config: dict[str, Any], depth: str) -> schema.ProviderRuntime:
+    """Resolve model pins for mock mode without requiring live credentials."""
+    provider_name = (config.get("LAST30DAYS_REASONING_PROVIDER") or "gemini").lower()
+    if provider_name == "auto":
+        provider_name = "gemini"
+    if provider_name not in _MODEL_DEFAULTS:
         raise RuntimeError(f"Unsupported reasoning provider: {provider_name}")
 
+    planner_model, rerank_model, grounding_model = _resolve_model_pins(config, depth, provider_name)
     return schema.ProviderRuntime(
         reasoning_provider=provider_name,
         planner_model=planner_model,
@@ -237,16 +248,11 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
         else:
             raise RuntimeError("No reasoning provider configured. Set GOOGLE_API_KEY, OpenAI auth, or XAI_API_KEY.")
 
-    planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or GEMINI_FLASH_LITE
-    rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or (GEMINI_PRO if depth == "deep" else GEMINI_FLASH_LITE)
-    grounding_model = config.get("LAST30DAYS_GROUNDING_MODEL") or GEMINI_FLASH_LITE
-    _require_gemini_31_preview(grounding_model, role="grounding")
+    planner_model, rerank_model, grounding_model = _resolve_model_pins(config, depth, provider_name)
 
     if provider_name == "gemini":
         if not google_key:
             raise RuntimeError("Gemini selected but no Google API key is configured.")
-        _require_gemini_31_preview(planner_model, role="planner")
-        _require_gemini_31_preview(rerank_model, role="rerank")
         runtime = schema.ProviderRuntime(
             reasoning_provider="gemini",
             planner_model=planner_model,
@@ -261,8 +267,8 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
             raise RuntimeError("OpenAI selected but no valid OpenAI auth is configured.")
         runtime = schema.ProviderRuntime(
             reasoning_provider="openai",
-            planner_model=config.get("LAST30DAYS_PLANNER_MODEL") or OPENAI_DEFAULT,
-            rerank_model=config.get("LAST30DAYS_RERANK_MODEL") or OPENAI_DEFAULT,
+            planner_model=planner_model,
+            rerank_model=rerank_model,
             grounding_model=grounding_model,
             x_search_backend=_resolve_x_backend(config),
         )
@@ -277,8 +283,8 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
             raise RuntimeError("xAI selected but XAI_API_KEY is not configured.")
         runtime = schema.ProviderRuntime(
             reasoning_provider="xai",
-            planner_model=config.get("LAST30DAYS_PLANNER_MODEL") or XAI_DEFAULT,
-            rerank_model=config.get("LAST30DAYS_RERANK_MODEL") or XAI_DEFAULT,
+            planner_model=planner_model,
+            rerank_model=rerank_model,
             grounding_model=grounding_model,
             x_search_backend=_resolve_x_backend(config),
         )

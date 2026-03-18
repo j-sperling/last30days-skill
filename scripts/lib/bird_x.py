@@ -12,6 +12,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from . import http
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -60,9 +62,7 @@ def _subprocess_env() -> Dict[str, str]:
 
 
 def _log(msg: str):
-    """Log to stderr."""
-    sys.stderr.write(f"[Bird] {msg}\n")
-    sys.stderr.flush()
+    http.source_log("Bird", msg, tty_only=False)
 
 
 def _extract_core_subject(topic: str) -> str:

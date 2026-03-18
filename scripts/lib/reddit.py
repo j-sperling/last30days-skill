@@ -64,9 +64,7 @@ NOISE_WORDS = frozenset({
 
 
 def _log(msg: str):
-    """Log to stderr."""
-    sys.stderr.write(f"[Reddit] {msg}\n")
-    sys.stderr.flush()
+    http.source_log("Reddit", msg, tty_only=False)
 
 
 def _sc_headers(token: str) -> Dict[str, str]:

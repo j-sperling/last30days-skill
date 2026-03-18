@@ -49,10 +49,7 @@ def _extract_core_subject(topic: str) -> str:
 
 
 def _log(msg: str):
-    """Log to stderr (only in interactive terminals; spinner handles non-TTY)."""
-    if sys.stderr.isatty():
-        sys.stderr.write(f"[TikTok] {msg}\n")
-        sys.stderr.flush()
+    http.source_log("TikTok", msg)
 
 
 def _sc_headers(token: str) -> Dict[str, str]:
