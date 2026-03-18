@@ -12,7 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
-from . import http
+from . import http, log
 from .query import extract_core_subject
 from .relevance import token_overlap_relevance
 
@@ -34,7 +34,7 @@ ENRICH_LIMITS = {
 
 
 def _log(msg: str):
-    http.source_log("HN", msg)
+    log.source_log("HN", msg)
 
 
 def _date_to_unix(date_str: str) -> int:

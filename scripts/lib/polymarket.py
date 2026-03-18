@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus, urlencode
 
-from . import http
+from . import http, log
 from .relevance import LOW_SIGNAL_QUERY_TOKENS, token_overlap_relevance
 
 GAMMA_SEARCH_URL = "https://gamma-api.polymarket.com/public-search"
@@ -33,7 +33,7 @@ RESULT_CAP = {
 
 
 def _log(msg: str):
-    http.source_log("PM", msg)
+    log.source_log("PM", msg)
 
 
 def _extract_core_subject(topic: str) -> str:

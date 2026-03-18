@@ -9,7 +9,7 @@ import re
 import sys
 from typing import Any, Dict, List, Optional
 
-from . import http
+from . import http, log
 
 TRUTHSOCIAL_SEARCH_URL = "https://truthsocial.com/api/v2/search"
 
@@ -21,7 +21,7 @@ DEPTH_CONFIG = {
 
 
 def _log(msg: str):
-    http.source_log("TruthSocial", msg)
+    log.source_log("TruthSocial", msg)
 
 
 def _strip_html(html: str) -> str:

@@ -5,15 +5,15 @@ import re
 import sys
 from typing import Any, Dict, List, Optional
 
-from . import http
+from . import http, log
 
 
 def _log(msg: str):
-    http.source_log("xAI", msg, tty_only=False)
+    log.source_log("xAI", msg, tty_only=False)
 
 
 def _log_error(msg: str):
-    http.source_log("xAI ERROR", msg, tty_only=False)
+    log.source_log("xAI ERROR", msg, tty_only=False)
 
 # xAI uses responses endpoint with Agent Tools API
 XAI_RESPONSES_URL = "https://api.x.ai/v1/responses"

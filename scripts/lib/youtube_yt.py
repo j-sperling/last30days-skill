@@ -35,12 +35,12 @@ TRANSCRIPT_LIMITS = {
 # Max words to keep from each transcript
 TRANSCRIPT_MAX_WORDS = 500
 
-from . import http
+from . import http, log
 from .relevance import token_overlap_relevance as _compute_relevance
 
 
 def _log(msg: str):
-    http.source_log("YouTube", msg, tty_only=False)
+    log.source_log("YouTube", msg, tty_only=False)
 
 
 def is_ytdlp_installed() -> bool:

@@ -17,7 +17,7 @@ try:
 except ImportError:
     _requests = None
 
-from . import dates, http
+from . import dates, http, log
 
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com"
 
@@ -50,7 +50,7 @@ def _extract_core_subject(topic: str) -> str:
 
 
 def _log(msg: str):
-    http.source_log("Instagram", msg)
+    log.source_log("Instagram", msg)
 
 
 def _sc_headers(token: str) -> Dict[str, str]:

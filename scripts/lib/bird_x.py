@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import http
+from . import http, log
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -62,7 +62,7 @@ def _subprocess_env() -> Dict[str, str]:
 
 
 def _log(msg: str):
-    http.source_log("Bird", msg, tty_only=False)
+    log.source_log("Bird", msg, tty_only=False)
 
 
 def _extract_core_subject(topic: str) -> str:

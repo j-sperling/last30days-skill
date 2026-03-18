@@ -1,7 +1,6 @@
 """HTTP utilities for last30days skill (stdlib only)."""
 
 import json
-import os
 import re
 import sys
 import time
@@ -10,30 +9,14 @@ import urllib.request
 from typing import Any, Dict, Optional, Union
 from urllib.parse import urlencode
 
+from . import log as _log
+
 DEFAULT_TIMEOUT = 30
-DEBUG = os.environ.get("LAST30DAYS_DEBUG", "").lower() in ("1", "true", "yes")
 
 
 def log(msg: str):
     """Log debug message to stderr."""
-    if DEBUG:
-        sys.stderr.write(f"[DEBUG] {msg}\n")
-        sys.stderr.flush()
-
-
-def source_log(prefix: str, msg: str, *, tty_only: bool = True) -> None:
-    """Log a source module message to stderr.
-
-    Args:
-        prefix: Source label (e.g. "Reddit", "Bird").
-        msg: Message text.
-        tty_only: If True, only log when stderr is a TTY (avoids cluttering
-                  non-interactive output like Claude Code).
-    """
-    if tty_only and not sys.stderr.isatty():
-        return
-    sys.stderr.write(f"[{prefix}] {msg}\n")
-    sys.stderr.flush()
+    _log.debug(msg)
 
 
 MAX_RETRIES = 5

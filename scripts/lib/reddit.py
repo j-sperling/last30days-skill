@@ -19,7 +19,7 @@ try:
 except ImportError:
     _requests = None
 
-from . import http
+from . import http, log
 
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com/v1/reddit"
 
@@ -64,7 +64,7 @@ NOISE_WORDS = frozenset({
 
 
 def _log(msg: str):
-    http.source_log("Reddit", msg, tty_only=False)
+    log.source_log("Reddit", msg, tty_only=False)
 
 
 def _sc_headers(token: str) -> Dict[str, str]:
