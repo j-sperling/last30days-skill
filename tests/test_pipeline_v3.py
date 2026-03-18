@@ -594,5 +594,42 @@ class TestXHandleFlag(unittest.TestCase):
         self.assertEqual("test topic", report.topic)
 
 
+class TestWarnings(unittest.TestCase):
+    def _item(self, source="reddit"):
+        return schema.SourceItem(item_id="1", source=source, title="t", body="b", url="u")
+
+    def _candidate(self, source="reddit", score=50.0):
+        c = schema.Candidate(
+            candidate_id="c1", item_id="1", source=source, title="t", url="u",
+            snippet="s", subquery_labels=["main"], native_ranks={"main:reddit": 1},
+            local_relevance=0.5, freshness=50, engagement=10, source_quality=0.7,
+            rrf_score=0.01, sources=[source],
+        )
+        c.final_score = score
+        return c
+
+    def test_no_candidates_warning(self):
+        w = pipeline._warnings({"reddit": [self._item()]}, [], {})
+        self.assertTrue(any("No candidates" in msg for msg in w))
+
+    def test_thin_evidence_warning(self):
+        candidates = [self._candidate() for _ in range(3)]
+        w = pipeline._warnings({"reddit": [self._item()]}, candidates, {})
+        self.assertTrue(any("thin" in msg.lower() for msg in w))
+
+    def test_single_source_concentration(self):
+        candidates = [self._candidate() for _ in range(5)]
+        w = pipeline._warnings({"reddit": [self._item()]}, candidates, {})
+        self.assertTrue(any("concentrated" in msg.lower() for msg in w))
+
+    def test_source_errors_listed(self):
+        w = pipeline._warnings({}, [self._candidate()], {"x": "timeout"})
+        self.assertTrue(any("x" in msg for msg in w))
+
+    def test_no_items_warning(self):
+        w = pipeline._warnings({}, [], {})
+        self.assertTrue(any("No source returned" in msg for msg in w))
+
+
 if __name__ == "__main__":
     unittest.main()

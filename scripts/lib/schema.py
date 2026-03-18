@@ -126,6 +126,10 @@ class Cluster:
     score: float
     uncertainty: Literal["single-source", "thin-evidence"] | None = None
 
+    def __post_init__(self) -> None:
+        if not set(self.representative_ids) <= set(self.candidate_ids):
+            raise ValueError("representative_ids must be a subset of candidate_ids")
+
 
 @dataclass
 class Report:

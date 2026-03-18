@@ -67,5 +67,28 @@ class ClusterV3Tests(unittest.TestCase):
         self.assertIn("c2", clusters[0].candidate_ids)
 
 
+class TestClusterUncertainty(unittest.TestCase):
+    def test_single_source_returns_single_source(self):
+        candidates = [make_candidate("c1", "reddit", "Title", "Body", 80)]
+        result = cluster._cluster_uncertainty(candidates)
+        self.assertEqual("single-source", result)
+
+    def test_multi_source_high_score_returns_none(self):
+        candidates = [
+            make_candidate("c1", "reddit", "Title", "Body", 80),
+            make_candidate("c2", "x", "Title2", "Body2", 70),
+        ]
+        result = cluster._cluster_uncertainty(candidates)
+        self.assertIsNone(result)
+
+    def test_multi_source_low_score_returns_thin_evidence(self):
+        candidates = [
+            make_candidate("c1", "reddit", "Title", "Body", 30),
+            make_candidate("c2", "x", "Title2", "Body2", 40),
+        ]
+        result = cluster._cluster_uncertainty(candidates)
+        self.assertEqual("thin-evidence", result)
+
+
 if __name__ == "__main__":
     unittest.main()
