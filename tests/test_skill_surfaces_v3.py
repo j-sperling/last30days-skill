@@ -73,7 +73,6 @@ class SkillSurfaceV3Tests(unittest.TestCase):
         for path in [
             REPO_ROOT / "variants" / "open" / "SKILL.md",
             REPO_ROOT / "variants" / "open" / "context.md",
-            REPO_ROOT / "variants" / "open" / "references" / "research.md",
             REPO_ROOT / "variants" / "open" / "references" / "watchlist.md",
             REPO_ROOT / "variants" / "open" / "references" / "briefing.md",
             REPO_ROOT / "variants" / "open" / "references" / "history.md",
