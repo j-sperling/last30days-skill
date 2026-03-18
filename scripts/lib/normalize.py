@@ -40,11 +40,11 @@ def normalize_source_items(
         "reddit": _normalize_reddit,
         "x": _normalize_x,
         "youtube": _normalize_youtube,
-        "tiktok": _normalize_tiktok,
-        "instagram": _normalize_instagram,
+        "tiktok": lambda s, i, idx, fd, td: _normalize_shortform_video(s, i, idx, fd, td, "TK", "TikTok post"),
+        "instagram": lambda s, i, idx, fd, td: _normalize_shortform_video(s, i, idx, fd, td, "IG", "Instagram reel"),
         "hackernews": _normalize_hackernews,
-        "bluesky": _normalize_bluesky,
-        "truthsocial": _normalize_truthsocial,
+        "bluesky": lambda s, i, idx, fd, td: _normalize_microblog(s, i, idx, fd, td, "BS", "Bluesky post"),
+        "truthsocial": lambda s, i, idx, fd, td: _normalize_microblog(s, i, idx, fd, td, "TS", "Truth Social post"),
         "polymarket": _normalize_polymarket,
         "grounding": _normalize_grounding,
         "xiaohongshu": _normalize_grounding,
@@ -206,45 +206,22 @@ def _normalize_youtube(
     )
 
 
-def _normalize_tiktok(
+def _normalize_shortform_video(
     source: str,
     item: dict[str, Any],
     index: int,
     from_date: str,
     to_date: str,
+    id_prefix: str,
+    default_title: str,
 ) -> schema.SourceItem:
+    """Shared normalizer for TikTok and Instagram (identical structure)."""
     caption = str(item.get("caption_snippet") or "").strip()
     text = str(item.get("text") or "").strip()
     return _source_item(
-        item_id=str(item.get("id") or f"TK{index + 1}"),
+        item_id=str(item.get("id") or f"{id_prefix}{index + 1}"),
         source=source,
-        title=text[:140] or caption[:140] or f"TikTok post {index + 1}",
-        body="\n".join(part for part in [text, caption] if part),
-        url=str(item.get("url") or ""),
-        author=str(item.get("author_name") or ""),
-        published_at=item.get("date"),
-        date_confidence=_date_confidence(item, from_date, to_date, default="high"),
-        engagement=item.get("engagement") or {},
-        relevance_hint=item.get("relevance", 0.5),
-        why_relevant=str(item.get("why_relevant") or ""),
-        snippet=caption,
-        metadata={"hashtags": item.get("hashtags") or []},
-    )
-
-
-def _normalize_instagram(
-    source: str,
-    item: dict[str, Any],
-    index: int,
-    from_date: str,
-    to_date: str,
-) -> schema.SourceItem:
-    caption = str(item.get("caption_snippet") or "").strip()
-    text = str(item.get("text") or "").strip()
-    return _source_item(
-        item_id=str(item.get("id") or f"IG{index + 1}"),
-        source=source,
-        title=text[:140] or caption[:140] or f"Instagram reel {index + 1}",
+        title=text[:140] or caption[:140] or f"{default_title} {index + 1}",
         body="\n".join(part for part in [text, caption] if part),
         url=str(item.get("url") or ""),
         author=str(item.get("author_name") or ""),
@@ -295,42 +272,21 @@ def _normalize_hackernews(
     )
 
 
-def _normalize_bluesky(
+def _normalize_microblog(
     source: str,
     item: dict[str, Any],
     index: int,
     from_date: str,
     to_date: str,
+    id_prefix: str,
+    default_title: str,
 ) -> schema.SourceItem:
+    """Shared normalizer for Bluesky and Truth Social (identical structure)."""
     text = str(item.get("text") or "").strip()
     return _source_item(
-        item_id=str(item.get("id") or f"BS{index + 1}"),
+        item_id=str(item.get("id") or f"{id_prefix}{index + 1}"),
         source=source,
-        title=text[:140] or f"Bluesky post {index + 1}",
-        body=text,
-        url=str(item.get("url") or ""),
-        author=str(item.get("handle") or item.get("author_handle") or "").lstrip("@"),
-        published_at=item.get("date"),
-        date_confidence=_date_confidence(item, from_date, to_date, default="high"),
-        engagement=item.get("engagement") or {},
-        relevance_hint=item.get("relevance", 0.5),
-        why_relevant=str(item.get("why_relevant") or ""),
-        metadata={"display_name": item.get("display_name")},
-    )
-
-
-def _normalize_truthsocial(
-    source: str,
-    item: dict[str, Any],
-    index: int,
-    from_date: str,
-    to_date: str,
-) -> schema.SourceItem:
-    text = str(item.get("text") or "").strip()
-    return _source_item(
-        item_id=str(item.get("id") or f"TS{index + 1}"),
-        source=source,
-        title=text[:140] or f"Truth Social post {index + 1}",
+        title=text[:140] or f"{default_title} {index + 1}",
         body=text,
         url=str(item.get("url") or ""),
         author=str(item.get("handle") or item.get("author_handle") or "").lstrip("@"),

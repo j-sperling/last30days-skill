@@ -1,6 +1,7 @@
 # last30days Skill
 
-Claude Code skill for researching any topic across Reddit, X, YouTube, and web.
+Claude Code skill for researching any topic across Reddit, X, YouTube, TikTok,
+Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and web sources.
 Python scripts with multi-source search aggregation.
 
 ## Structure
