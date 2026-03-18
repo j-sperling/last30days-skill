@@ -6,6 +6,8 @@ import math
 
 from . import dates, relevance, schema
 
+# Editorial signal-to-noise scores. Grounding (Google Search) is 1.0 baseline;
+# social platforms discounted for noise.
 SOURCE_QUALITY = {
     "grounding": 1.0,
     "xiaohongshu": 0.7,

@@ -173,7 +173,7 @@ def parse_x_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
             data = json.loads(json_match.group())
             items = data.get("items", [])
         except json.JSONDecodeError:
-            pass
+            _log(f"Failed to parse xAI response JSON: {output_text[:200]}")
 
     # Validate and clean items
     clean_items = []

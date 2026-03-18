@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from . import schema
 
 INTENT_SCORING_HINTS: dict[str, str] = {
@@ -56,7 +58,7 @@ def rerank_candidates(
         try:
             response = provider.generate_json(model, _build_prompt(topic, plan, shortlisted))
             _apply_llm_scores(shortlisted, response)
-        except Exception as exc:
+        except (ValueError, KeyError, json.JSONDecodeError, OSError) as exc:
             import sys
             print(f"[Rerank] LLM reranking failed, using local fallback: {type(exc).__name__}: {exc}", file=sys.stderr)
             _apply_fallback_scores(shortlisted)
@@ -72,7 +74,7 @@ def rerank_candidates(
         key=lambda candidate: (
             -candidate.final_score,
             -(candidate.engagement or -1),
-            min(candidate.native_ranks.values()),
+            min(candidate.native_ranks.values(), default=999),
             candidate.title,
         ),
     )
@@ -184,5 +186,7 @@ def _final_score(candidate: schema.Candidate) -> float:
 
 
 def _normalized_rrf(rrf_score: float) -> float:
-    # Practical bound for the shortlist sizes we use.
+    # Empirical ceiling for normalized RRF scores at the pool sizes we use.
+    # Max single-stream RRF at rank 1 is 1/(K+1) ~ 0.016; multi-stream
+    # accumulation reaches ~0.08.
     return max(0.0, min(100.0, (rrf_score / 0.08) * 100.0))

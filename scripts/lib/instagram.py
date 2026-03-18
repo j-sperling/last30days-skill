@@ -9,7 +9,7 @@ API docs: https://scrapecreators.com/docs
 
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 try:
@@ -17,7 +17,7 @@ try:
 except ImportError:
     _requests = None
 
-from . import http
+from . import dates, http
 
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com"
 
@@ -88,9 +88,8 @@ def _parse_date(item: Dict[str, Any]) -> Optional[str]:
 
     # Fall back to unix timestamp
     try:
-        dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
-        return dt.strftime("%Y-%m-%d")
-    except (ValueError, TypeError, OSError):
+        return dates.timestamp_to_date(int(ts))
+    except (ValueError, TypeError):
         pass
 
     return None

@@ -116,7 +116,9 @@ URLs:
     )
     try:
         result = provider.url_context_json(model, prompt)
-    except Exception:
+    except Exception as exc:
+        import sys
+        print(f"[Grounding] URL context refinement failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return
     snippet_by_url = {
         str(entry.get("url") or "").strip(): str(entry.get("snippet") or "").strip()

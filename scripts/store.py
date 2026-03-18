@@ -133,9 +133,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES ('default_schedule', '0 8 * *
 """
 
 # Future migrations keyed by version number
-MIGRATIONS: Dict[int, str] = {
-    # 2: "ALTER TABLE findings ADD COLUMN tags TEXT DEFAULT '[]';",
-}
+MIGRATIONS: Dict[int, str] = {}
 
 
 def _connect(db_path: Optional[Path] = None) -> sqlite3.Connection:

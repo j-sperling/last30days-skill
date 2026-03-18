@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 from . import query, schema
@@ -96,7 +97,7 @@ def plan_query(
             plan = _sanitize_plan(raw, topic, available_sources, requested_sources, depth)
             if plan.subqueries:
                 return plan
-        except Exception as exc:
+        except (ValueError, KeyError, json.JSONDecodeError, OSError) as exc:
             import sys
             print(f"[Planner] LLM planning failed, using deterministic fallback: {type(exc).__name__}: {exc}", file=sys.stderr)
             return _fallback_plan(

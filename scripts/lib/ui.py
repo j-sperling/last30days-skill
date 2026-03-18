@@ -1,4 +1,8 @@
-"""Terminal UI utilities for last30days skill."""
+"""Terminal UI utilities for last30days skill.
+
+NOTE: This module is unused by the v3 pipeline (pipeline.py).
+Retained for potential external consumers.
+"""
 
 import sys
 import time

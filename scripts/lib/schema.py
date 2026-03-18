@@ -274,12 +274,10 @@ def candidate_source_label(candidate: Candidate) -> str:
 
 
 def candidate_best_published_at(candidate: Candidate) -> str | None:
-    dated_items = sorted(
+    return max(
         (item.published_at for item in candidate.source_items if item.published_at),
-        reverse=True,
+        default=None,
     )
-    if dated_items:
-        return dated_items[0]
     return None
 
 

@@ -9,7 +9,6 @@ API docs: https://scrapecreators.com/docs
 
 import re
 import sys
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 try:
@@ -17,7 +16,7 @@ try:
 except ImportError:
     _requests = None
 
-from . import http
+from . import dates, http
 
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com/v1/tiktok"
 
@@ -65,18 +64,13 @@ def _sc_headers(token: str) -> Dict[str, str]:
 
 
 def _parse_date(item: Dict[str, Any]) -> Optional[str]:
-    """Parse date from ScrapeCreators TikTok item to YYYY-MM-DD.
-
-    Handles create_time (unix timestamp).
-    """
+    """Parse date from ScrapeCreators TikTok item to YYYY-MM-DD."""
     ts = item.get("create_time")
     if ts:
         try:
-            dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
-            return dt.strftime("%Y-%m-%d")
-        except (ValueError, TypeError, OSError):
+            return dates.timestamp_to_date(int(ts))
+        except (ValueError, TypeError):
             pass
-
     return None
 
 

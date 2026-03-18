@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from . import schema
 
+# Standard RRF smoothing constant (Cormack et al. 2009)
 RRF_K = 60
 
 

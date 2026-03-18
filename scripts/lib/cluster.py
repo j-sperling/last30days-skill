@@ -62,6 +62,8 @@ def cluster_candidates(
         return clusters
 
     groups: list[list[schema.Candidate]] = []
+    # Lower threshold for breaking_news: related articles share fewer exact
+    # words but cover the same event.
     threshold = 0.42 if plan.intent == "breaking_news" else 0.48
     for candidate in candidates:
         assigned = False
