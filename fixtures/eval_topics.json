@@ -1,6 +1,6 @@
 [
   {"topic": "OpenClaw vs NanoClaw vs ZeroClaw", "query_type": "comparison"},
-  {"topic": "Claude 4 vs GPT-5.4 vs DeepSeek V4", "query_type": "comparison"},
+  {"topic": "Claude Opus 4.6 vs GPT-5.4 vs DeepSeek V4", "query_type": "comparison"},
   {"topic": "React/Vue/Svelte for frontend in 2026", "query_type": "comparison"},
   {"topic": "Codex CLI vs Claude Code", "query_type": "comparison"},
 
