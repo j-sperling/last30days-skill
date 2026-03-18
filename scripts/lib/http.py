@@ -19,6 +19,7 @@ def log(msg: str):
         sys.stderr.write(f"[DEBUG] {msg}\n")
         sys.stderr.flush()
 MAX_RETRIES = 5
+MAX_429_RETRIES = 2
 RETRY_DELAY = 2.0
 USER_AGENT = "last30days-skill/2.1 (Assistant Skill)"
 
@@ -38,6 +39,7 @@ def request(
     json_data: Optional[Dict[str, Any]] = None,
     timeout: int = DEFAULT_TIMEOUT,
     retries: int = MAX_RETRIES,
+    max_429_retries: int = MAX_429_RETRIES,
     raw: bool = False,
 ) -> Dict[str, Any]:
     """Make an HTTP request and return JSON response.
@@ -69,6 +71,7 @@ def request(
     log(f"{method} {url}")
 
     last_error = None
+    rate_limit_count = 0
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -92,6 +95,12 @@ def request(
             # Don't retry client errors (4xx) except rate limits
             if 400 <= e.code < 500 and e.code != 429:
                 raise last_error
+
+            # Cap 429 retries separately to avoid wasting latency
+            if e.code == 429:
+                rate_limit_count += 1
+                if rate_limit_count >= max_429_retries:
+                    raise last_error
 
             if attempt < retries - 1:
                 if e.code == 429:
