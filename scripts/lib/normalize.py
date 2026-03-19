@@ -189,12 +189,13 @@ def _normalize_youtube(
     to_date: str,
 ) -> schema.SourceItem:
     transcript = str(item.get("transcript_snippet") or "").strip()
+    description = str(item.get("description") or "").strip()
     title = str(item.get("title") or "").strip()
     return _source_item(
         item_id=str(item.get("video_id") or item.get("id") or f"YT{index + 1}"),
         source=source,
         title=title,
-        body="\n".join(part for part in [title, transcript] if part),
+        body="\n".join(part for part in [title, description, transcript] if part),
         url=str(item.get("url") or ""),
         author=str(item.get("channel_name") or ""),
         published_at=item.get("date"),

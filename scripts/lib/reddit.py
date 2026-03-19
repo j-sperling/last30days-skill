@@ -471,7 +471,9 @@ def search_reddit(
     with ThreadPoolExecutor(max_workers=max_global or 1) as executor:
         futures = {}
         for i, query in enumerate(queries[:max_global]):
-            sort = "relevance" if i == 0 else "top"
+            # Product/comparison queries: sort=top surfaces high-engagement posts
+            # from relevant communities instead of keyword-matched noise.
+            sort = "top" if intent in ("product", "comparison") else ("relevance" if i == 0 else "top")
             _log(f"Global search {i+1}/{max_global}: '{query}' (sort={sort})")
             futures[executor.submit(_global_search, query, token, sort, timeframe)] = query
         for future in as_completed(futures):

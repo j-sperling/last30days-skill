@@ -19,22 +19,22 @@ ALLOWED_INTENTS = {
 }
 ALLOWED_CLUSTER_MODES = {"none", "story", "workflow", "market", "debate"}
 QUICK_SOURCE_PRIORITY = {
-    "factual": ["hackernews", "reddit", "x", "youtube", "polymarket"],
-    "product": ["reddit", "x", "youtube", "hackernews", "polymarket"],
-    "concept": ["hackernews", "reddit", "x", "youtube", "polymarket"],
-    "opinion": ["reddit", "x", "youtube", "hackernews", "polymarket"],
-    "how_to": ["youtube", "reddit", "x", "hackernews", "polymarket"],
-    "comparison": ["reddit", "x", "hackernews", "youtube", "polymarket"],
+    "factual": ["hackernews", "reddit", "x", "youtube"],
+    "product": ["youtube", "reddit", "x", "tiktok"],
+    "concept": ["hackernews", "reddit", "x", "youtube"],
+    "opinion": ["reddit", "x", "youtube", "hackernews"],
+    "how_to": ["youtube", "reddit", "x", "hackernews"],
+    "comparison": ["reddit", "x", "hackernews", "youtube"],
     "breaking_news": ["x", "reddit", "hackernews", "youtube", "polymarket"],
     "prediction": ["polymarket", "x", "hackernews", "reddit", "youtube"],
 }
 SOURCE_PRIORITY = {
-    "factual": ["hackernews", "reddit", "x", "youtube", "polymarket"],
-    "product": ["reddit", "x", "youtube", "hackernews", "polymarket"],
-    "concept": ["hackernews", "reddit", "x", "youtube", "polymarket"],
-    "opinion": ["reddit", "x", "youtube", "hackernews", "polymarket"],
-    "how_to": ["youtube", "reddit", "x", "hackernews", "polymarket"],
-    "comparison": ["reddit", "x", "hackernews", "youtube", "polymarket"],
+    "factual": ["hackernews", "reddit", "x", "youtube"],
+    "product": ["youtube", "reddit", "x", "tiktok", "hackernews"],
+    "concept": ["hackernews", "reddit", "x", "youtube"],
+    "opinion": ["reddit", "x", "youtube", "hackernews"],
+    "how_to": ["youtube", "reddit", "x", "hackernews"],
+    "comparison": ["reddit", "x", "hackernews", "youtube"],
     "breaking_news": ["x", "reddit", "hackernews", "youtube", "polymarket"],
     "prediction": ["polymarket", "x", "hackernews", "reddit", "youtube"],
 }
@@ -55,7 +55,12 @@ SOURCE_LIMITS = {
 }
 INTENT_SOURCE_EXCLUSIONS: dict[str, set[str]] = {
     "prediction": {"tiktok", "instagram"},
-    "opinion": {"tiktok", "instagram"},
+    "opinion": {"tiktok", "instagram", "polymarket"},
+    "product": {"polymarket"},
+    "comparison": {"polymarket"},
+    "concept": {"polymarket"},
+    "how_to": {"polymarket"},
+    "factual": {"polymarket"},
 }
 SOURCE_CAPABILITIES = {
     "reddit": {"discussion", "social"},

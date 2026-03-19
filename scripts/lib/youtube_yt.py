@@ -156,6 +156,7 @@ def search_youtube(
         if upload_date and len(upload_date) == 8:
             date_str = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
 
+        description = str(video.get("description", ""))[:500]
         items.append({
             "video_id": video_id,
             "title": video.get("title", ""),
@@ -168,8 +169,9 @@ def search_youtube(
                 "comments": comment_count,
             },
             "duration": video.get("duration"),
-            "relevance": _compute_relevance(core_topic, video.get("title", "")),
+            "relevance": _compute_relevance(core_topic, f"{video.get('title', '')} {description}"),
             "why_relevant": f"YouTube: {video.get('title', core_topic)[:60]}",
+            "description": description,
         })
 
     # Soft date filter: prefer recent items but fall back to all if too few

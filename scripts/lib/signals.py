@@ -152,9 +152,9 @@ def annotate_stream(
 
 def prune_low_relevance(
     items: list[schema.SourceItem],
-    minimum: float = 0.03,
+    minimum: float = 0.15,
 ) -> list[schema.SourceItem]:
-    """Drop obviously weak lexical matches when stronger evidence exists."""
+    """Drop weak lexical matches when stronger evidence exists."""
     filtered = [
         item
         for item in items
