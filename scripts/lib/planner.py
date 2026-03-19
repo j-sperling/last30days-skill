@@ -19,24 +19,24 @@ ALLOWED_INTENTS = {
 }
 ALLOWED_CLUSTER_MODES = {"none", "story", "workflow", "market", "debate"}
 QUICK_SOURCE_PRIORITY = {
-    "factual": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
-    "product": ["reddit", "grounding", "x", "youtube", "hackernews", "polymarket"],
-    "concept": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
-    "opinion": ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
-    "how_to": ["grounding", "reddit", "youtube", "x", "hackernews", "polymarket"],
-    "comparison": ["reddit", "x", "grounding", "hackernews", "youtube", "polymarket"],
-    "breaking_news": ["grounding", "x", "reddit", "hackernews", "youtube", "polymarket"],
-    "prediction": ["polymarket", "x", "grounding", "reddit", "hackernews", "youtube"],
+    "factual": ["hackernews", "reddit", "x", "youtube", "polymarket"],
+    "product": ["reddit", "x", "youtube", "hackernews", "polymarket"],
+    "concept": ["hackernews", "reddit", "x", "youtube", "polymarket"],
+    "opinion": ["reddit", "x", "youtube", "hackernews", "polymarket"],
+    "how_to": ["youtube", "reddit", "x", "hackernews", "polymarket"],
+    "comparison": ["reddit", "x", "hackernews", "youtube", "polymarket"],
+    "breaking_news": ["x", "reddit", "hackernews", "youtube", "polymarket"],
+    "prediction": ["polymarket", "x", "hackernews", "reddit", "youtube"],
 }
 SOURCE_PRIORITY = {
-    "factual": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
-    "product": ["reddit", "grounding", "x", "youtube", "hackernews", "polymarket"],
-    "concept": ["grounding", "hackernews", "reddit", "x", "youtube", "polymarket"],
-    "opinion": ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
-    "how_to": ["grounding", "youtube", "reddit", "x", "hackernews", "polymarket"],
-    "comparison": ["reddit", "x", "grounding", "hackernews", "youtube", "polymarket"],
-    "breaking_news": ["grounding", "x", "reddit", "hackernews", "youtube", "polymarket"],
-    "prediction": ["polymarket", "x", "grounding", "hackernews", "reddit", "youtube"],
+    "factual": ["hackernews", "reddit", "x", "youtube", "polymarket"],
+    "product": ["reddit", "x", "youtube", "hackernews", "polymarket"],
+    "concept": ["hackernews", "reddit", "x", "youtube", "polymarket"],
+    "opinion": ["reddit", "x", "youtube", "hackernews", "polymarket"],
+    "how_to": ["youtube", "reddit", "x", "hackernews", "polymarket"],
+    "comparison": ["reddit", "x", "hackernews", "youtube", "polymarket"],
+    "breaking_news": ["x", "reddit", "hackernews", "youtube", "polymarket"],
+    "prediction": ["polymarket", "x", "hackernews", "reddit", "youtube"],
 }
 SOURCE_LIMITS = {
     "quick": {
@@ -53,8 +53,11 @@ SOURCE_LIMITS = {
     # at default depth. Fusion and reranking handle quality. quick mode
     # uses tight budgets above for latency.
 }
+INTENT_SOURCE_EXCLUSIONS: dict[str, set[str]] = {
+    "prediction": {"tiktok", "instagram"},
+    "opinion": {"tiktok", "instagram"},
+}
 SOURCE_CAPABILITIES = {
-    "grounding": {"web", "reference"},
     "reddit": {"discussion", "social"},
     "x": {"discussion", "social"},
     "youtube": {"video", "video_longform", "discussion"},
@@ -432,19 +435,19 @@ def _default_cluster_mode(intent: str) -> str:
 def _default_source_weights(intent: str, sources: list[str]) -> dict[str, float]:
     base = {source: 1.0 for source in sources}
     if intent == "prediction":
-        for source, bonus in {"polymarket": 2.5, "grounding": 1.6, "x": 1.3}.items():
+        for source, bonus in {"polymarket": 2.5, "x": 1.3}.items():
             if source in base:
                 base[source] += bonus
     elif intent == "breaking_news":
-        for source, bonus in {"grounding": 2.0, "x": 1.5, "reddit": 1.3, "hackernews": 0.8}.items():
+        for source, bonus in {"x": 1.5, "reddit": 1.3, "hackernews": 0.8}.items():
             if source in base:
                 base[source] += bonus
     elif intent == "how_to":
-        for source, bonus in {"youtube": 2.0, "grounding": 1.4, "hackernews": 0.8}.items():
+        for source, bonus in {"youtube": 2.0, "hackernews": 0.8}.items():
             if source in base:
                 base[source] += bonus
     elif intent == "factual":
-        for source, bonus in {"grounding": 2.5, "reddit": 0.8, "x": 0.5}.items():
+        for source, bonus in {"reddit": 0.8, "x": 0.5}.items():
             if source in base:
                 base[source] += bonus
     return base
@@ -510,16 +513,23 @@ def _max_subqueries(intent: str) -> int:
 
 def _default_sources_for_intent(intent: str, available_sources: list[str]) -> list[str]:
     if intent == "how_to":
-        return _how_to_sources(available_sources)
-    target_capabilities = DEFAULT_INTENT_CAPABILITIES.get(intent)
-    if not target_capabilities:
-        return list(available_sources)
-    matched = [
-        source
-        for source in available_sources
-        if SOURCE_CAPABILITIES.get(source, set()) & target_capabilities
-    ]
-    return matched or list(available_sources)
+        sources = _how_to_sources(available_sources)
+    else:
+        target_capabilities = DEFAULT_INTENT_CAPABILITIES.get(intent)
+        if not target_capabilities:
+            sources = list(available_sources)
+        else:
+            matched = [
+                source
+                for source in available_sources
+                if SOURCE_CAPABILITIES.get(source, set()) & target_capabilities
+            ]
+            sources = matched or list(available_sources)
+    excluded = INTENT_SOURCE_EXCLUSIONS.get(intent, set())
+    if excluded:
+        filtered = [s for s in sources if s not in excluded]
+        return filtered or sources
+    return sources
 
 
 def _how_to_sources(available_sources: list[str]) -> list[str]:

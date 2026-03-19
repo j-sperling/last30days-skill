@@ -313,11 +313,11 @@ class TestTrimSubqueriesForDepth(unittest.TestCase):
         self.assertGreater(len(result[0].sources), 3)
 
     def test_deep_expands_via_capabilities(self):
-        available = ["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"]
+        available = ["reddit", "x", "youtube", "hackernews", "polymarket"]
         sqs = [self._sq(sources=available)]
         result = planner._trim_subqueries_for_depth(sqs, "comparison", "deep", available)
         # Deep comparison should also use capability expansion, not trim
-        self.assertGreaterEqual(len(result[0].sources), 5)
+        self.assertGreaterEqual(len(result[0].sources), 4)
 
 
 # ---------------------------------------------------------------------------
@@ -405,26 +405,25 @@ class TestDaysAgoZeroFalsy(unittest.TestCase):
 
 
 class TestRerankBoundary(unittest.TestCase):
-    """Rerank demotion must have a clean boundary at exactly 5.0."""
+    """Rerank demotion must have a clean boundary at exactly 20.0."""
 
-    def test_score_at_exactly_5_is_not_demoted(self):
+    def test_score_at_exactly_20_is_not_demoted(self):
         c = _candidate()
-        c.rerank_score = 5.0
-        score_at_5 = rerank._final_score(c)
+        c.rerank_score = 20.0
+        score_at_20 = rerank._final_score(c)
         c.rerank_score = 50.0
         score_at_50 = rerank._final_score(c)
-        # Score at 5.0 should NOT be 0.3x multiplied
-        self.assertGreater(score_at_5 / score_at_50, 0.08,
-                           "Score at 5.0 should not be demoted")
+        self.assertGreater(score_at_20 / score_at_50, 0.3,
+                           "Score at 20.0 should not be demoted")
 
-    def test_score_at_4_99_is_demoted(self):
+    def test_score_at_19_99_is_demoted(self):
         c = _candidate()
-        c.rerank_score = 4.99
+        c.rerank_score = 19.99
         score_demoted = rerank._final_score(c)
-        c.rerank_score = 5.0
+        c.rerank_score = 20.0
         score_not_demoted = rerank._final_score(c)
         self.assertLess(score_demoted, score_not_demoted * 0.5,
-                        "Score at 4.99 should be heavily demoted vs 5.0")
+                        "Score at 19.99 should be heavily demoted vs 20.0")
 
 
 class TestSlashFalsePositives(unittest.TestCase):

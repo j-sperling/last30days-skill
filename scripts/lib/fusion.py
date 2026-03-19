@@ -18,17 +18,31 @@ def candidate_key(item: schema.SourceItem) -> str:
     return f"{item.source}:{item.item_id}"
 
 
+_DIVERSITY_RELEVANCE_THRESHOLD = 0.25
+
+
 def _diversify_pool(
     fused: list[schema.Candidate],
     pool_limit: int,
     min_per_source: int = 2,
 ) -> list[schema.Candidate]:
-    """Ensure at least *min_per_source* items per active source survive truncation."""
+    """Ensure at least *min_per_source* items per qualifying source survive truncation.
+
+    Sources only qualify for reserved slots if their best item exceeds
+    the relevance threshold. Low-relevance sources compete on merit only.
+    """
+    max_relevance: dict[str, float] = {}
+    for c in fused:
+        current = max_relevance.get(c.source, 0.0)
+        if c.local_relevance > current:
+            max_relevance[c.source] = c.local_relevance
+
     reserved: dict[str, list[schema.Candidate]] = {}
     remainder: list[schema.Candidate] = []
     for c in fused:
+        qualifies = max_relevance.get(c.source, 0.0) >= _DIVERSITY_RELEVANCE_THRESHOLD
         bucket = reserved.setdefault(c.source, [])
-        if len(bucket) < min_per_source:
+        if qualifies and len(bucket) < min_per_source:
             bucket.append(c)
         else:
             remainder.append(c)

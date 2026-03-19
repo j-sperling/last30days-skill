@@ -24,7 +24,7 @@ class PipelineV3Tests(unittest.TestCase):
         self.assertTrue(report.ranked_candidates)
         self.assertTrue(report.clusters)
         self.assertIn("x", report.items_by_source)
-        self.assertIn("grounding", report.items_by_source)
+        self.assertNotIn("grounding", report.items_by_source)
         self.assertEqual("gemini", report.provider_runtime.reasoning_provider)
         self.assertTrue(report.provider_runtime.grounding_model.startswith("gemini-3.1-"))
 

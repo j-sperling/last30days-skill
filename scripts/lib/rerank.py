@@ -180,7 +180,7 @@ def _final_score(candidate: schema.Candidate) -> float:
         + 0.10 * candidate.freshness
         + 0.05 * (candidate.source_quality * 100.0)
     )
-    if candidate.rerank_score is not None and candidate.rerank_score < 5.0:
+    if candidate.rerank_score is not None and candidate.rerank_score < 20.0:
         base *= 0.3
     return base
 

@@ -102,9 +102,18 @@ def expand_reddit_queries(topic: str, depth: str) -> List[str]:
     if core.lower() != original_clean.lower() and len(original_clean.split()) <= 8:
         queries.append(original_clean)
 
-    # Opinion/review variants help mostly for product and opinion queries.
-    # They contaminate broader searches like predictions or breaking news.
     qtype = _infer_query_intent(topic)
+
+    # Product queries: always include review-oriented variant to bias toward
+    # review communities instead of keyword-matching unrelated subreddits.
+    if qtype == "product":
+        queries.append(f"{core} review OR recommendation OR best")
+
+    # Comparison queries: include head-to-head discussion variant.
+    if qtype == "comparison":
+        queries.append(f"{core} worth it OR vs OR compared")
+
+    # Opinion/review variants for default/deep depth.
     if depth in ("default", "deep") and qtype in ("product", "opinion"):
         queries.append(f"{core} worth it OR thoughts OR review")
 

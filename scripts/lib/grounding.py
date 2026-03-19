@@ -64,7 +64,7 @@ def _items_from_grounding_payload(
     items = []
     for index, chunk in enumerate(chunks):
         web = chunk.get("web") or {}
-        url = str(web.get("uri") or "").strip()
+        url = _resolve_redirect(str(web.get("uri") or "").strip())
         if not url:
             continue
         snippet = " ".join(dict.fromkeys(support_map.get(index, []))).strip()
@@ -230,6 +230,20 @@ def _extract_labeled_date(text: str) -> str | None:
             except ValueError:
                 continue
     return None
+
+
+def _resolve_redirect(url: str) -> str:
+    """Follow Google grounding redirect to get the real destination URL."""
+    if "vertexaisearch.cloud.google.com/grounding-api-redirect" not in url:
+        return url
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, method="HEAD")
+        req.add_header("User-Agent", "Mozilla/5.0")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.url
+    except Exception:
+        return url
 
 
 def _domain(url: str) -> str:

@@ -214,7 +214,8 @@ def run(
                 ranking_query=subquery.ranking_query,
             )
             normalized = normalized[: settings["per_stream_limit"]]
-            bundle.add_items(subquery.label, source, normalized)
+            if source != "grounding":
+                bundle.add_items(subquery.label, source, normalized)
             if artifact:
                 bundle.artifacts.setdefault("grounding", []).append(artifact)
 

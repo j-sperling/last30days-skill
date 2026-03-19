@@ -41,7 +41,7 @@ class RegressionTests(unittest.TestCase):
         self.assertNotIn("corsair", joined_queries)
         self.assertNotIn("mouse", joined_queries)
         for subquery in plan["subqueries"]:
-            self.assertGreaterEqual(len(subquery["sources"]), 5)
+            self.assertGreaterEqual(len(subquery["sources"]), 4)
 
     def test_how_to_keeps_web_video_and_discussion_sources(self):
         payload = run_mock_json("how to deploy on Fly.io")
@@ -49,10 +49,9 @@ class RegressionTests(unittest.TestCase):
         plan = payload["query_plan"]
         self.assertEqual("how_to", plan["intent"])
         sources = set(plan["subqueries"][0]["sources"])
-        self.assertIn("grounding", sources)
         self.assertIn("youtube", sources)
         self.assertIn("reddit", sources)
-        self.assertGreaterEqual(len(sources), 3)
+        self.assertGreaterEqual(len(sources), 2)
 
     def test_breaking_news_query_keeps_expected_shape(self):
         payload = run_mock_json("latest news about React 20")

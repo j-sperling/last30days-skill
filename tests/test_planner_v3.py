@@ -13,13 +13,13 @@ class PlannerV3Tests(unittest.TestCase):
             "intent": "how_to",
             "freshness_mode": "balanced_recent",
             "cluster_mode": "workflow",
-            "source_weights": {"grounding": 0.7, "hackernews": 0.3},
+            "source_weights": {"hackernews": 0.7, "reddit": 0.3},
             "subqueries": [
                 {
                     "label": "primary",
                     "search_query": "deploy app to Fly.io guide",
                     "ranking_query": "How do I deploy an app to Fly.io?",
-                    "sources": ["grounding", "hackernews"],
+                    "sources": ["hackernews"],
                     "weight": 1.0,
                 }
             ],
@@ -27,14 +27,13 @@ class PlannerV3Tests(unittest.TestCase):
         plan = planner._sanitize_plan(
             raw,
             "how to deploy on Fly.io",
-            ["reddit", "x", "grounding", "youtube", "hackernews"],
+            ["reddit", "x", "youtube", "hackernews"],
             None,
             "default",
         )
         sources = plan.subqueries[0].sources
-        # how_to capability routing selects web + video + discussion
+        # how_to capability routing selects video + discussion
         self.assertIn("reddit", sources)
-        self.assertIn("grounding", sources)
         self.assertIn("youtube", sources)
         self.assertIn("reddit", plan.source_weights)
         self.assertIn("youtube", plan.source_weights)
@@ -43,7 +42,7 @@ class PlannerV3Tests(unittest.TestCase):
     def test_comparison_uses_deterministic_plan_and_preserves_entities(self):
         plan = planner.plan_query(
             topic="openclaw vs nanoclaw vs ironclaw",
-            available_sources=["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
+            available_sources=["reddit", "x", "youtube", "hackernews", "polymarket"],
             requested_sources=None,
             depth="default",
             provider=object(),
@@ -60,7 +59,7 @@ class PlannerV3Tests(unittest.TestCase):
     def test_fallback_plan_emits_dual_query_fields(self):
         plan = planner.plan_query(
             topic="codex vs claude code",
-            available_sources=["reddit", "x", "grounding"],
+            available_sources=["reddit", "x"],
             requested_sources=None,
             depth="default",
             provider=None,
@@ -75,7 +74,7 @@ class PlannerV3Tests(unittest.TestCase):
     def test_factual_topic_uses_no_cluster_mode(self):
         plan = planner.plan_query(
             topic="what is the parameter count of claude code",
-            available_sources=["grounding", "reddit"],
+            available_sources=["reddit", "hackernews"],
             requested_sources=None,
             depth="default",
             provider=None,
@@ -87,7 +86,7 @@ class PlannerV3Tests(unittest.TestCase):
     def test_quick_mode_collapses_fallback_to_single_subquery(self):
         plan = planner.plan_query(
             topic="codex vs claude code",
-            available_sources=["reddit", "x", "grounding"],
+            available_sources=["reddit", "x"],
             requested_sources=None,
             depth="quick",
             provider=None,
@@ -100,7 +99,7 @@ class PlannerV3Tests(unittest.TestCase):
     def test_default_comparison_uses_all_capable_sources(self):
         plan = planner.plan_query(
             topic="codex vs claude code",
-            available_sources=["reddit", "x", "grounding", "youtube", "hackernews", "polymarket"],
+            available_sources=["reddit", "x", "youtube", "hackernews", "polymarket"],
             requested_sources=None,
             depth="default",
             provider=None,
@@ -109,12 +108,12 @@ class PlannerV3Tests(unittest.TestCase):
         self.assertEqual("comparison", plan.intent)
         for subquery in plan.subqueries:
             # Default depth should not artificially cap sources
-            self.assertGreaterEqual(len(subquery.sources), 5)
+            self.assertGreaterEqual(len(subquery.sources), 4)
 
     def test_default_how_to_keeps_youtube_in_source_mix(self):
         plan = planner.plan_query(
             topic="how to deploy remotion animations for claude code",
-            available_sources=["reddit", "x", "grounding", "youtube", "hackernews"],
+            available_sources=["reddit", "x", "youtube", "hackernews"],
             requested_sources=None,
             depth="default",
             provider=None,
@@ -124,13 +123,12 @@ class PlannerV3Tests(unittest.TestCase):
         sources = plan.subqueries[0].sources
         self.assertIn("youtube", sources)
         self.assertIn("reddit", sources)
-        self.assertIn("grounding", sources)
 
     def test_how_to_sources_includes_capability_matched_extras(self):
-        """how_to routing should include additional sources beyond the core 3."""
+        """how_to routing should include additional sources beyond the core ones."""
         plan = planner.plan_query(
             topic="how to deploy on Fly.io",
-            available_sources=["reddit", "tiktok", "instagram", "grounding", "youtube", "hackernews"],
+            available_sources=["reddit", "tiktok", "instagram", "youtube", "hackernews"],
             requested_sources=None,
             depth="default",
             provider=None,
@@ -138,13 +136,11 @@ class PlannerV3Tests(unittest.TestCase):
         )
         self.assertEqual("how_to", plan.intent)
         sources = plan.subqueries[0].sources
-        # Core sources must be present
-        self.assertIn("grounding", sources)
         self.assertIn("youtube", sources)
         self.assertIn("reddit", sources)
         # Additional capability-matched sources should also be included
-        self.assertGreater(len(sources), 3,
-                           f"how_to should include >3 sources, got {len(sources)}: {sources}")
+        self.assertGreater(len(sources), 2,
+                           f"how_to should include >2 sources, got {len(sources)}: {sources}")
 
     def test_ncaa_tournament_is_breaking_news(self):
         intent = planner._infer_intent("NCAA tournament brackets")
@@ -157,7 +153,7 @@ class PlannerV3Tests(unittest.TestCase):
     def test_factual_plan_has_at_most_2_subqueries(self):
         plan = planner.plan_query(
             topic="who acquired Wiz",
-            available_sources=["grounding", "reddit", "x", "hackernews"],
+            available_sources=["reddit", "x", "hackernews"],
             requested_sources=None,
             depth="default",
             provider=None,
@@ -169,7 +165,7 @@ class PlannerV3Tests(unittest.TestCase):
     def test_default_how_to_prefers_longform_video_over_shortform(self):
         plan = planner.plan_query(
             topic="how to deploy on Fly.io",
-            available_sources=["reddit", "tiktok", "instagram", "grounding", "youtube", "hackernees"],
+            available_sources=["reddit", "tiktok", "instagram", "youtube", "hackernews"],
             requested_sources=None,
             depth="default",
             provider=None,
@@ -180,7 +176,50 @@ class PlannerV3Tests(unittest.TestCase):
         # how_to routing should include youtube (longform) over tiktok/instagram
         self.assertIn("youtube", sources)
         self.assertIn("reddit", sources)
-        self.assertIn("grounding", sources)
+
+    def test_prediction_excludes_tiktok_and_instagram(self):
+        plan = planner.plan_query(
+            topic="odds of US recession 2026",
+            available_sources=["reddit", "x", "tiktok", "instagram", "youtube", "hackernews", "polymarket"],
+            requested_sources=None,
+            depth="default",
+            provider=None,
+            model=None,
+        )
+        self.assertEqual("prediction", plan.intent)
+        for subquery in plan.subqueries:
+            self.assertNotIn("tiktok", subquery.sources)
+            self.assertNotIn("instagram", subquery.sources)
+
+    def test_opinion_excludes_tiktok_and_instagram(self):
+        plan = planner.plan_query(
+            topic="thoughts on OpenAI Codex pricing",
+            available_sources=["reddit", "x", "tiktok", "instagram", "youtube", "hackernews"],
+            requested_sources=None,
+            depth="default",
+            provider=None,
+            model=None,
+        )
+        self.assertEqual("opinion", plan.intent)
+        for subquery in plan.subqueries:
+            self.assertNotIn("tiktok", subquery.sources)
+            self.assertNotIn("instagram", subquery.sources)
+
+    def test_breaking_news_includes_tiktok_and_instagram(self):
+        plan = planner.plan_query(
+            topic="2026 March Madness",
+            available_sources=["reddit", "x", "tiktok", "instagram", "youtube", "hackernews"],
+            requested_sources=None,
+            depth="default",
+            provider=None,
+            model=None,
+        )
+        self.assertEqual("breaking_news", plan.intent)
+        all_sources = set()
+        for subquery in plan.subqueries:
+            all_sources.update(subquery.sources)
+        self.assertIn("tiktok", all_sources)
+        self.assertIn("instagram", all_sources)
 
 
 if __name__ == "__main__":
