@@ -64,6 +64,16 @@ class RerankV3Tests(unittest.TestCase):
         self.assertLess(low_score, high_score)
         self.assertLess(low_score, 20.0)
 
+    def test_mediocre_rerank_score_is_demoted(self):
+        """A candidate with rerank_score=15.0 should be demoted (below 20.0 threshold)."""
+        mediocre = make_candidate(15.0)
+        good = make_candidate(40.0)
+        mediocre_score = rerank._final_score(mediocre)
+        good_score = rerank._final_score(good)
+        # 15.0 is below the 20.0 threshold, so it gets 0.3x penalty
+        self.assertLess(mediocre_score, good_score * 0.4,
+                        "Score of 15.0 should be demoted under 20.0 threshold")
+
     def test_missing_engagement_does_not_create_penalty(self):
         candidate = make_candidate(80.0)
         candidate.engagement = None

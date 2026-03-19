@@ -405,26 +405,37 @@ class TestDaysAgoZeroFalsy(unittest.TestCase):
 
 
 class TestRerankBoundary(unittest.TestCase):
-    """Rerank demotion must have a clean boundary at exactly 5.0."""
+    """Rerank demotion must have a clean boundary at exactly 20.0."""
 
-    def test_score_at_exactly_5_is_not_demoted(self):
+    def test_score_at_exactly_20_is_not_demoted(self):
         c = _candidate()
-        c.rerank_score = 5.0
-        score_at_5 = rerank._final_score(c)
+        c.rerank_score = 20.0
+        score_at_20 = rerank._final_score(c)
         c.rerank_score = 50.0
         score_at_50 = rerank._final_score(c)
-        # Score at 5.0 should NOT be 0.3x multiplied
-        self.assertGreater(score_at_5 / score_at_50, 0.08,
-                           "Score at 5.0 should not be demoted")
+        # Score at 20.0 should NOT be 0.3x multiplied
+        self.assertGreater(score_at_20 / score_at_50, 0.3,
+                           "Score at 20.0 should not be demoted")
 
-    def test_score_at_4_99_is_demoted(self):
+    def test_score_at_19_99_is_demoted(self):
         c = _candidate()
-        c.rerank_score = 4.99
+        c.rerank_score = 19.99
         score_demoted = rerank._final_score(c)
-        c.rerank_score = 5.0
+        c.rerank_score = 20.0
         score_not_demoted = rerank._final_score(c)
         self.assertLess(score_demoted, score_not_demoted * 0.5,
-                        "Score at 4.99 should be heavily demoted vs 5.0")
+                        "Score at 19.99 should be heavily demoted vs 20.0")
+
+    def test_score_at_15_is_demoted(self):
+        """A candidate with rerank_score=15.0 should be demoted under new threshold."""
+        c = _candidate()
+        c.rerank_score = 15.0
+        score_at_15 = rerank._final_score(c)
+        c.rerank_score = 50.0
+        score_at_50 = rerank._final_score(c)
+        # 15.0 is below 20.0 threshold, so it should get 0.3x demotion
+        self.assertLess(score_at_15, score_at_50 * 0.3,
+                        "Score at 15.0 should be demoted under 20.0 threshold")
 
 
 class TestSlashFalsePositives(unittest.TestCase):

@@ -11,10 +11,10 @@ from . import dates, relevance, schema
 SOURCE_QUALITY = {
     "grounding": 1.0,
     "xiaohongshu": 0.7,
-    "polymarket": 0.9,
+    "polymarket": 0.5,
     "hackernews": 0.8,
-    "youtube": 0.75,
-    "reddit": 0.7,
+    "youtube": 0.85,
+    "reddit": 0.6,
     "x": 0.68,
     "bluesky": 0.66,
     "truthsocial": 0.6,
