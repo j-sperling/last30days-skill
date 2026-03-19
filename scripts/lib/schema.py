@@ -1,5 +1,7 @@
 """Data schemas for last30days skill."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
@@ -838,3 +840,37 @@ def create_report(
         openai_model_used=openai_model,
         xai_model_used=xai_model,
     )
+
+
+# ---------------------------------------------------------------------------
+# v3 planning types (used by planner.py)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SubQuery:
+    """Planner-emitted retrieval unit."""
+
+    label: str
+    search_query: str
+    ranking_query: str
+    sources: list[str]
+    weight: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not self.sources:
+            raise ValueError("SubQuery must have at least one source")
+        if self.weight <= 0:
+            raise ValueError(f"SubQuery weight must be positive, got {self.weight}")
+
+
+@dataclass
+class QueryPlan:
+    """Planner output."""
+
+    intent: str
+    freshness_mode: str
+    cluster_mode: str
+    raw_topic: str
+    subqueries: list[SubQuery]
+    source_weights: dict[str, float]
+    notes: list[str] = field(default_factory=list)
