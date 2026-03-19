@@ -150,14 +150,25 @@ def annotate_stream(
     return sorted(items, key=lambda item: item.local_rank_score or 0, reverse=True)
 
 
+_SOCIAL_SOURCES = {"reddit", "x", "tiktok", "instagram", "bluesky", "truthsocial"}
+
+
 def prune_low_relevance(
     items: list[schema.SourceItem],
     minimum: float = 0.15,
 ) -> list[schema.SourceItem]:
-    """Drop weak lexical matches when stronger evidence exists."""
-    filtered = [
-        item
-        for item in items
-        if (item.local_relevance if item.local_relevance is not None else 0.0) >= minimum
-    ]
+    """Drop weak lexical matches when stronger evidence exists.
+
+    Social-source items with zero engagement get a stricter threshold
+    because zero engagement on a social platform is a strong noise signal.
+    """
+    def passes(item: schema.SourceItem) -> bool:
+        rel = item.local_relevance if item.local_relevance is not None else 0.0
+        if rel < minimum:
+            return False
+        if item.source in _SOCIAL_SOURCES and (item.engagement_score is None or item.engagement_score == 0):
+            return rel >= minimum * 1.5
+        return True
+
+    filtered = [item for item in items if passes(item)]
     return filtered or items

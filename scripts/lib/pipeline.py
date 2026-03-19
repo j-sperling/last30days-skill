@@ -466,9 +466,11 @@ def _retry_thin_sources(
     if depth == "quick":
         return
 
+    planned_sources = {s for sq in plan.subqueries for s in sq.sources}
     thin_sources = [
         source for source, items in bundle.items_by_source.items()
         if len(items) < 3 and source not in bundle.errors_by_source
+        and source in planned_sources
     ]
 
     if not thin_sources:
