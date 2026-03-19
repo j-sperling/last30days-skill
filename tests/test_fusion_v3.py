@@ -53,12 +53,15 @@ class FusionV3Tests(unittest.TestCase):
         self.assertEqual(2, len(merged.source_items))
 
 
-    def test_diversify_pool_guarantees_min_per_source(self):
-        """Every active source gets at least 2 items in the fused pool.
+    def test_diversify_pool_guarantees_min_per_qualifying_source(self):
+        """Every qualifying source (local_relevance >= 0.25) gets at least 2
+        items in the fused pool.
 
         Dominant sources (x, tiktok) get high weights, so pure-RRF truncation
         would squeeze out low-weight sources entirely.  The diversity guarantee
-        must reserve at least 2 slots per active source.
+        must reserve at least 2 slots per qualifying active source.  All sources
+        here have rank_score=0.8 (well above the 0.25 threshold), so every
+        source qualifies for reserved slots.
         """
         sources = ["reddit", "hackernews", "x", "tiktok", "bluesky", "youtube"]
         # Heavily skewed weights: x and tiktok dominate.
@@ -114,6 +117,152 @@ class FusionV3Tests(unittest.TestCase):
                 2,
                 f"Source '{src}' has {source_counts.get(src, 0)} items, expected >= 2",
             )
+
+
+    def test_diversify_pool_denies_slots_for_low_relevance_source(self):
+        """Sources with best local_relevance < 0.25 do not get reserved slots.
+
+        Create two sources: 'x' with local_relevance=0.5 (qualifies) and
+        'reddit' with local_relevance=0.1 (below threshold). With a tight
+        pool_limit, the high-relevance source gets reserved slots while
+        the low-relevance source must compete on RRF merit alone.
+        """
+        plan = schema.QueryPlan(
+            intent="concept",
+            freshness_mode="relaxed",
+            cluster_mode="concept",
+            raw_topic="test",
+            subqueries=[
+                schema.SubQuery(
+                    label="primary",
+                    search_query="test",
+                    ranking_query="What is test?",
+                    sources=["x", "reddit"],
+                    weight=1.0,
+                ),
+            ],
+            source_weights={"x": 1.0, "reddit": 1.0},
+        )
+
+        # x items: high relevance (0.5) -- qualifies for diversity reservation
+        x_items = [
+            make_item(f"x_{i}", "x", f"https://x.example.com/{i}", f"x item {i}", 0.5)
+            for i in range(4)
+        ]
+
+        # reddit items: low relevance (0.1) -- below threshold, no reserved slots
+        reddit_items = [
+            make_item(f"r_{i}", "reddit", f"https://reddit.example.com/{i}", f"reddit item {i}", 0.1)
+            for i in range(4)
+        ]
+
+        streams = {
+            ("primary", "x"): x_items,
+            ("primary", "reddit"): reddit_items,
+        }
+
+        # pool_limit=3: x gets 2 reserved + 1 more by RRF. Reddit has no
+        # reserved slots, so it must out-score x items in the remainder.
+        candidates = fusion.weighted_rrf(streams, plan, pool_limit=3)
+        self.assertEqual(3, len(candidates))
+
+        # x must have at least 2 (reserved slots)
+        x_count = sum(1 for c in candidates if c.source == "x")
+        self.assertGreaterEqual(x_count, 2, "x should have at least 2 reserved slots")
+
+    def test_diversify_pool_no_reservation_when_all_below_threshold(self):
+        """When all sources are below the relevance threshold, no reserved slots
+        are granted. The pool is filled purely by RRF score order."""
+        plan = schema.QueryPlan(
+            intent="concept",
+            freshness_mode="relaxed",
+            cluster_mode="concept",
+            raw_topic="test",
+            subqueries=[
+                schema.SubQuery(
+                    label="primary",
+                    search_query="test",
+                    ranking_query="What is test?",
+                    sources=["x", "reddit", "hackernews"],
+                    weight=1.0,
+                ),
+            ],
+            # Give x a much higher weight so its items get higher RRF scores
+            source_weights={"x": 3.0, "reddit": 0.3, "hackernews": 0.3},
+        )
+
+        streams: dict[tuple[str, str], list[schema.SourceItem]] = {}
+        # All sources below threshold (local_relevance = 0.1)
+        for src in ["x", "reddit", "hackernews"]:
+            items = [
+                make_item(f"{src}_{i}", src, f"https://{src}.example.com/{i}", f"{src} item {i}", 0.1)
+                for i in range(4)
+            ]
+            streams[("primary", src)] = items
+
+        candidates = fusion.weighted_rrf(streams, plan, pool_limit=4)
+        self.assertEqual(4, len(candidates))
+
+        # With no diversity reservation and x having 3x the weight,
+        # x should dominate the top slots purely on RRF score
+        source_counts: dict[str, int] = {}
+        for c in candidates:
+            source_counts[c.source] = source_counts.get(c.source, 0) + 1
+
+        # x has 3x weight so its RRF scores are ~3x higher than reddit/hn.
+        # All 4 x items should beat all reddit/hackernews items.
+        self.assertEqual(
+            source_counts.get("x", 0),
+            4,
+            f"Expected x to take all 4 slots on pure RRF merit, got {source_counts}",
+        )
+
+    def test_diversify_pool_threshold_boundary(self):
+        """Source with best local_relevance exactly at the threshold (0.25)
+        qualifies for reserved slots."""
+        plan = schema.QueryPlan(
+            intent="concept",
+            freshness_mode="relaxed",
+            cluster_mode="concept",
+            raw_topic="boundary",
+            subqueries=[
+                schema.SubQuery(
+                    label="primary",
+                    search_query="boundary",
+                    ranking_query="What is boundary?",
+                    sources=["x", "reddit"],
+                    weight=1.0,
+                ),
+            ],
+            # Give x much higher weight so it would dominate without reservation
+            source_weights={"x": 5.0, "reddit": 0.1},
+        )
+
+        x_items = [
+            make_item(f"x_{i}", "x", f"https://x.example.com/{i}", f"x item {i}", 0.8)
+            for i in range(6)
+        ]
+
+        # reddit at exactly the threshold
+        reddit_items = [
+            make_item(f"r_{i}", "reddit", f"https://reddit.example.com/{i}", f"reddit item {i}", 0.25)
+            for i in range(3)
+        ]
+
+        streams = {
+            ("primary", "x"): x_items,
+            ("primary", "reddit"): reddit_items,
+        }
+
+        candidates = fusion.weighted_rrf(streams, plan, pool_limit=6)
+        self.assertEqual(6, len(candidates))
+
+        reddit_count = sum(1 for c in candidates if c.source == "reddit")
+        self.assertGreaterEqual(
+            reddit_count,
+            2,
+            f"reddit (local_relevance=0.25, at threshold) should get 2 reserved slots, got {reddit_count}",
+        )
 
 
 if __name__ == "__main__":
