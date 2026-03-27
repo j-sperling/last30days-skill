@@ -203,14 +203,12 @@ def _resolve_model_pins(config: dict[str, Any], depth: str, provider_name: str) 
 
     planner_model = config.get("LAST30DAYS_PLANNER_MODEL") or default_planner
     rerank_model = config.get("LAST30DAYS_RERANK_MODEL") or default_rerank
-    grounding_model = config.get("LAST30DAYS_GROUNDING_MODEL") or GEMINI_FLASH_LITE
-    _require_gemini_31_preview(grounding_model, role="grounding")
 
     if provider_name == "gemini":
         _require_gemini_31_preview(planner_model, role="planner")
         _require_gemini_31_preview(rerank_model, role="rerank")
 
-    return planner_model, rerank_model, grounding_model
+    return planner_model, rerank_model
 
 
 def mock_runtime(config: dict[str, Any], depth: str) -> schema.ProviderRuntime:
@@ -221,12 +219,12 @@ def mock_runtime(config: dict[str, Any], depth: str) -> schema.ProviderRuntime:
     if provider_name not in _MODEL_DEFAULTS:
         raise RuntimeError(f"Unsupported reasoning provider: {provider_name}")
 
-    planner_model, rerank_model, grounding_model = _resolve_model_pins(config, depth, provider_name)
+    planner_model, rerank_model = _resolve_model_pins(config, depth, provider_name)
     return schema.ProviderRuntime(
         reasoning_provider=provider_name,
         planner_model=planner_model,
         rerank_model=rerank_model,
-        grounding_model=grounding_model,
+
         x_search_backend=_resolve_x_backend(config),
     )
 
@@ -248,7 +246,7 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
         else:
             raise RuntimeError("No reasoning provider configured. Set GOOGLE_API_KEY, OpenAI auth, or XAI_API_KEY.")
 
-    planner_model, rerank_model, grounding_model = _resolve_model_pins(config, depth, provider_name)
+    planner_model, rerank_model = _resolve_model_pins(config, depth, provider_name)
 
     if provider_name == "gemini":
         if not google_key:
@@ -257,7 +255,7 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
             reasoning_provider="gemini",
             planner_model=planner_model,
             rerank_model=rerank_model,
-            grounding_model=grounding_model,
+    
             x_search_backend=_resolve_x_backend(config),
         )
         return runtime, GeminiClient(google_key)
@@ -269,7 +267,7 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
             reasoning_provider="openai",
             planner_model=planner_model,
             rerank_model=rerank_model,
-            grounding_model=grounding_model,
+    
             x_search_backend=_resolve_x_backend(config),
         )
         return runtime, OpenAIClient(
@@ -285,7 +283,7 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
             reasoning_provider="xai",
             planner_model=planner_model,
             rerank_model=rerank_model,
-            grounding_model=grounding_model,
+    
             x_search_backend=_resolve_x_backend(config),
         )
         return runtime, XAIClient(xai_key)

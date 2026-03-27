@@ -17,18 +17,6 @@ class ProvidersV3Tests(unittest.TestCase):
         self.assertEqual("gemini", runtime.reasoning_provider)
         self.assertEqual("gemini", client.name)
         self.assertTrue(runtime.planner_model.startswith("gemini-3.1-"))
-        self.assertTrue(runtime.grounding_model.startswith("gemini-3.1-"))
-
-    def test_non_preview_grounding_model_is_rejected(self):
-        with self.assertRaises(RuntimeError):
-            providers.resolve_runtime(
-                {
-                    "GOOGLE_API_KEY": "test",
-                    "LAST30DAYS_REASONING_PROVIDER": "gemini",
-                    "LAST30DAYS_GROUNDING_MODEL": "gemini-2.5-flash",
-                },
-                depth="default",
-            )
 
     def test_auto_falls_back_to_openai(self):
         runtime, client = providers.resolve_runtime(

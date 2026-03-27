@@ -27,7 +27,6 @@ class PipelineV3Tests(unittest.TestCase):
         # Grounding items now enter the ranked pool (web search backends produce real items)
         self.assertIn("grounding", report.items_by_source)
         self.assertEqual("gemini", report.provider_runtime.reasoning_provider)
-        self.assertTrue(report.provider_runtime.grounding_model.startswith("gemini-3.1-"))
 
 
 class TestSourceFetchCap(unittest.TestCase):
@@ -128,7 +127,6 @@ class TestRateLimitSharing(unittest.TestCase):
                 reasoning_provider="mock",
                 planner_model="mock",
                 rerank_model="mock",
-                grounding_model="mock",
             ),
             mock=True,
             rate_limited_sources=rate_limited,
@@ -206,7 +204,6 @@ def _make_runtime(x_backend="bird"):
         reasoning_provider="mock",
         planner_model="mock",
         rerank_model="mock",
-        grounding_model="mock",
         x_search_backend=x_backend,
     )
 
@@ -519,7 +516,7 @@ class TestThinSourceRetry(unittest.TestCase):
                 depth="default",
                 date_range=("2026-02-15", "2026-03-17"),
                 runtime=_make_runtime(),
-                    mock=False,
+                mock=False,
                 rate_limited_sources=set(),
                 rate_limit_lock=threading.Lock(),
                 settings=settings,
@@ -546,7 +543,7 @@ class TestThinSourceRetry(unittest.TestCase):
                 depth="default",
                 date_range=("2026-02-15", "2026-03-17"),
                 runtime=_make_runtime(),
-                    mock=False,
+                mock=False,
                 rate_limited_sources=set(),
                 rate_limit_lock=threading.Lock(),
                 settings=settings,
@@ -572,7 +569,7 @@ class TestThinSourceRetry(unittest.TestCase):
                 depth="quick",
                 date_range=("2026-02-15", "2026-03-17"),
                 runtime=_make_runtime(),
-                    mock=False,
+                mock=False,
                 rate_limited_sources=set(),
                 rate_limit_lock=threading.Lock(),
                 settings=settings,

@@ -51,6 +51,12 @@ def extract_transcript_highlights(transcript: str, topic: str, limit: int = 5) -
 
     sentences = re.split(r'(?<=[.!?])\s+', transcript)
 
+    # Fallback for punctuation-free transcripts (common with auto-captions):
+    # chunk into ~20-word segments so they pass the 8-50 word filter.
+    if len(sentences) <= 1 and len(transcript.split()) > 50:
+        words = transcript.split()
+        sentences = [' '.join(words[i:i+20]) for i in range(0, len(words), 20)]
+
     filler = [
         r"^(hey |hi |what's up|welcome back|in today's video|don't forget to)",
         r"(subscribe|like and comment|hit the bell|check out the link|down below)",

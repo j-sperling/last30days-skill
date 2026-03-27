@@ -89,8 +89,7 @@ class TestAssessDataFreshness(unittest.TestCase):
             topic="test", range_from="2026-02-15", range_to="2026-03-17",
             generated_at="2026-03-17T00:00:00Z",
             provider_runtime=schema.ProviderRuntime(
-                reasoning_provider="test", planner_model="test",
-                rerank_model="test", grounding_model="test",
+                reasoning_provider="test", planner_model="test", rerank_model="test",
             ),
             query_plan=schema.QueryPlan(
                 intent="comparison", freshness_mode="balanced_recent",
@@ -384,8 +383,7 @@ class TestDaysAgoZeroFalsy(unittest.TestCase):
             topic="test", range_from="2026-02-15", range_to="2026-03-17",
             generated_at="2026-03-17T00:00:00Z",
             provider_runtime=schema.ProviderRuntime(
-                reasoning_provider="test", planner_model="test",
-                rerank_model="test", grounding_model="test",
+                reasoning_provider="test", planner_model="test", rerank_model="test",
             ),
             query_plan=schema.QueryPlan(
                 intent="comparison", freshness_mode="balanced_recent",

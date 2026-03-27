@@ -74,6 +74,17 @@ class TestExtractTranscriptHighlights(unittest.TestCase):
         highlights = youtube_yt.extract_transcript_highlights(sentences, "model", limit=3)
         self.assertEqual(len(highlights), 3)
 
+    def test_punctuation_free_transcript_produces_highlights(self):
+        # Auto-generated YouTube captions often lack sentence-ending punctuation
+        words = (
+            "the new Tesla Model Y has 350 miles of range and costs about 45000 dollars "
+            "which makes it one of the most affordable electric vehicles on the market today "
+            "compared to the BMW iX which starts at 87000 the value proposition is pretty clear "
+            "and with the 7500 dollar tax credit you can get it for under 40000"
+        )
+        highlights = youtube_yt.extract_transcript_highlights(words, "Tesla Model Y")
+        self.assertTrue(len(highlights) > 0, "Should produce highlights from punctuation-free text")
+
 
 if __name__ == "__main__":
     unittest.main()

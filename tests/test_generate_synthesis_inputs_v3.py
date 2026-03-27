@@ -33,7 +33,6 @@ class GenerateSynthesisInputsV3Tests(unittest.TestCase):
                 reasoning_provider="gemini",
                 planner_model="gemini-3.1-flash-lite-preview",
                 rerank_model="gemini-3.1-flash-lite-preview",
-                grounding_model="gemini-3.1-flash-lite-preview",
             ),
             query_plan=schema.QueryPlan(
                 intent="breaking_news",

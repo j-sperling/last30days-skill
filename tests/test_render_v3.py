@@ -72,7 +72,6 @@ def sample_report() -> schema.Report:
             reasoning_provider="gemini",
             planner_model="gemini-3.1-flash-lite-preview",
             rerank_model="gemini-3.1-flash-lite-preview",
-            grounding_model="gemini-3.1-flash-lite-preview",
         ),
         query_plan=schema.QueryPlan(
             intent="breaking_news",
@@ -96,7 +95,7 @@ class RenderV3Tests(unittest.TestCase):
         self.assertIn("## Ranked Evidence Clusters", text)
         self.assertIn("[reddit, grounding] Grounded result", text)
         self.assertIn("[344pts, 119cmt]", text)
-        self.assertIn("Also on: Grounded Web", text)
+        self.assertIn("Also on: Web", text)
         self.assertIn("Top comment: This is the strongest user reaction.", text)
         self.assertIn("Insight: Users corroborate the main claim.", text)
         self.assertIn("## Source Coverage", text)

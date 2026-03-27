@@ -5,7 +5,7 @@ from __future__ import annotations
 from . import dates, schema
 
 SOURCE_LABELS = {
-    "grounding": "Grounded Web",
+    "grounding": "Web",
     "hackernews": "Hacker News",
     "truthsocial": "Truth Social",
     "xiaohongshu": "Xiaohongshu",

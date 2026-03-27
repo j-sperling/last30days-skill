@@ -260,7 +260,6 @@ def get_config() -> dict[str, Any]:
         ('LAST30DAYS_REASONING_PROVIDER', 'auto'),
         ('LAST30DAYS_PLANNER_MODEL', None),
         ('LAST30DAYS_RERANK_MODEL', None),
-        ('LAST30DAYS_GROUNDING_MODEL', None),
         ('LAST30DAYS_X_MODEL', None),
         ('LAST30DAYS_X_BACKEND', None),
         ('OPENAI_MODEL_PIN', None),
