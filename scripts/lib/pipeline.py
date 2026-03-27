@@ -81,7 +81,6 @@ def normalize_requested_sources(sources: list[str] | None) -> list[str] | None:
 
 
 def available_sources(config: dict[str, Any], requested_sources: list[str] | None = None) -> list[str]:
-    google_key = _google_key(config)
     available: list[str] = []
     if config.get("SCRAPECREATORS_API_KEY"):
         available.extend(["reddit", "tiktok", "instagram"])
@@ -223,8 +222,7 @@ def run(
                 ranking_query=subquery.ranking_query,
             )
             normalized = normalized[: settings["per_stream_limit"]]
-            if source != "grounding" or web_backend != "gemini":
-                bundle.add_items(subquery.label, source, normalized)
+            bundle.add_items(subquery.label, source, normalized)
             if artifact:
                 bundle.artifacts.setdefault("grounding", []).append(artifact)
 

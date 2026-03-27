@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import urllib.parse
-import urllib.request
 from datetime import datetime
 from urllib.parse import urlparse
 
-from . import dates
+from . import dates, http
 
 
 # ---------------------------------------------------------------------------
@@ -28,9 +26,7 @@ def brave_search(
             }
         )
     )
-    req = urllib.request.Request(url, headers={"X-Subscription-Token": api_key})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read())
+    data = http.request("GET", url, headers={"X-Subscription-Token": api_key}, timeout=15)
     items = []
     for i, r in enumerate((data.get("web", {}).get("results", []))[:count]):
         raw_date = r.get("page_age") or ""
@@ -58,13 +54,12 @@ def brave_search(
 def serper_search(
     query: str, date_range: tuple[str, str], api_key: str, count: int = 5,
 ) -> tuple[list[dict], dict]:
-    payload = json.dumps({"q": query, "num": count}).encode()
-    req = urllib.request.Request(
-        "https://google.serper.dev/search", data=payload,
-        headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+    data = http.request(
+        "POST", "https://google.serper.dev/search",
+        headers={"X-API-KEY": api_key},
+        json_data={"q": query, "num": count},
+        timeout=15,
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read())
     items = []
     for i, r in enumerate((data.get("organic", []))[:count]):
         raw_date = r.get("date") or ""
@@ -137,11 +132,10 @@ def _normalize_date(value: object) -> str | None:
     return parsed.date().isoformat()
 
 
-def _in_date_range(published_at: str | None, date_range: tuple[str, str]) -> bool:
-    if not published_at:
+def _in_date_range(pub_date: str | None, date_range: tuple[str, str]) -> bool:
+    if not pub_date:
         return False
-    start, end = date_range
-    return start <= published_at <= end
+    return date_range[0] <= pub_date <= date_range[1]
 
 
 def _domain(url: str) -> str:

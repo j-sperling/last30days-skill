@@ -1,8 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import json
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -34,21 +33,15 @@ class BraveSearchTests(unittest.TestCase):
                 ]
             }
         }
-        with patch("lib.grounding.urllib.request.urlopen") as mock_urlopen:
-            mock_ctx = MagicMock()
-            mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
-            mock_ctx.__exit__ = MagicMock(return_value=False)
-            mock_ctx.read.return_value = json.dumps(mock_response).encode()
-            mock_urlopen.return_value = mock_ctx
-
+        with patch("lib.grounding.http.request", return_value=mock_response) as mock_req:
             items, artifact = grounding.brave_search("test", ("2026-02-25", "2026-03-27"), "fake-key")
             self.assertEqual(1, len(items))
             self.assertEqual("Test Article", items[0]["title"])
             self.assertEqual("https://example.com/article", items[0]["url"])
             self.assertEqual("2026-03-10", items[0]["date"])
             self.assertEqual("brave", artifact["label"])
-            request = mock_urlopen.call_args.args[0]
-            self.assertIn("freshness=2026-02-25to2026-03-27", request.full_url)
+            call_url = mock_req.call_args.args[1]
+            self.assertIn("freshness=2026-02-25to2026-03-27", call_url)
 
 
 class SerperSearchTests(unittest.TestCase):
@@ -74,13 +67,7 @@ class SerperSearchTests(unittest.TestCase):
                 }
             ]
         }
-        with patch("lib.grounding.urllib.request.urlopen") as mock_urlopen:
-            mock_ctx = MagicMock()
-            mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
-            mock_ctx.__exit__ = MagicMock(return_value=False)
-            mock_ctx.read.return_value = json.dumps(mock_response).encode()
-            mock_urlopen.return_value = mock_ctx
-
+        with patch("lib.grounding.http.request", return_value=mock_response):
             items, artifact = grounding.serper_search("test", ("2026-02-25", "2026-03-27"), "fake-key")
             self.assertEqual(1, len(items))
             self.assertEqual("Serper Result", items[0]["title"])
