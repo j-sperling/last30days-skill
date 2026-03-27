@@ -138,20 +138,28 @@ If you find a verified handle, pass `--x-handle={handle}` (without @). This sear
 
 ## Synthesis guidance
 
+### First: synthesize, don't summarize
+
+Extract key facts from the output first, then synthesize across sources. Lead with patterns that appear across multiple clusters. Present a unified narrative, not a source-by-source summary.
+
 ### Ground in actual research, not pre-existing knowledge
 
-Read the output carefully. Use exact product/tool names from the research, specific quotes, and what sources actually say. Do not conflate similar-sounding products or substitute your knowledge for what the research found.
+Use exact product/tool names, specific quotes, and what sources actually say. If research mentions "ClawdBot" and "@clawdbot", that is a different product than "Claude Code" -- read what the research actually says.
 
-### Per-source synthesis rules
+**Anti-pattern to avoid:**
+- BAD: User asks "best Claude Code skills" and you respond with generic advice: "Skills are powerful. Keep them under 500 lines."
+- GOOD: You respond with specifics from the research: "Most mentioned: /commit (5 mentions), remotion skill (4x), git-worktree (3x). The Remotion announcement got 16K likes on X per @thedorbrothers."
 
-- **Reddit:** Top comments often contain the best insights. When a top comment has high upvotes, quote it directly. Reddit's value is in the comments, not the post titles.
-- **YouTube:** Quote transcript highlights directly -- they are pre-extracted key moments. Attribute to the channel name. YouTube's value is in what creators SAY, not just view counts.
-- **X/Twitter:** Quote @handles with high engagement. These prove real-time community signal.
-- **TikTok/Instagram:** Cite @creators with engagement context (views, likes). Viral signal.
-- **Hacker News:** Technical community perspective. Cite as "per HN."
-- **Polymarket:** Prediction market odds are among the highest-signal data. Real money on outcomes cuts through opinion. Always include specific odds AND movement: "Polymarket has X at Y% (up Z% this month)."
-- **Web (Brave/Serper):** Lower weight than social sources (no engagement data). Only cite when social sources don't cover a fact.
-- **Cross-cluster signals:** When the same evidence appears across multiple clusters or sources, lead with it -- cross-platform corroboration is the strongest signal.
+### Source weighting (highest to lowest signal)
+
+1. **Cross-cluster corroboration** -- same evidence across multiple sources is the strongest signal. Lead with it.
+2. **Reddit top comments** -- often the wittiest, most insightful take. Quote directly when upvotes are high.
+3. **YouTube transcript highlights** -- pre-extracted key moments. Quote and attribute to channel name.
+4. **X/Twitter @handles** -- real-time community signal. Quote with engagement context.
+5. **Polymarket odds** -- real money on outcomes cuts through opinion. Include specific odds AND movement.
+6. **TikTok/Instagram** -- viral/creator signal. Cite @creators with views/likes.
+7. **Hacker News** -- technical community perspective. Cite as "per HN."
+8. **Web (Brave/Serper)** -- cite only when social sources don't cover a fact.
 
 ### Polymarket interpretation
 
@@ -161,46 +169,65 @@ When Polymarket returns relevant markets:
 3. Weave odds into the narrative as supporting evidence, don't isolate them
 4. When multiple relevant markets exist, highlight 3-5 ordered by importance
 
+Domain importance ranking:
+- **Sports:** Championship/tournament > conference title > regular season > weekly matchup
+- **Geopolitics:** Regime change/structural > near-term strike deadlines > sanctions
+- **Tech/Business:** IPO, major product launch > incremental updates
+- **Elections:** Presidency > primary > individual state
+
 ### Citation rules
 
-Cite sources sparingly to prove research is real:
-- In synthesis: cite 1-2 top sources per point, short format: "per @handle" or "per r/subreddit"
-- Do not include engagement metrics in citations (save those for stats)
-- Do not chain multiple citations: "per @x, @y, @z" is too much -- pick the strongest one
-- Never paste raw URLs in synthesis text
-
-Citation priority (most to least preferred):
-1. @handles from X
-2. r/subreddits from Reddit (prefer quoting top comments)
-3. YouTube channels (transcript-backed)
-4. TikTok/Instagram creators (viral signal)
-5. HN discussions
-6. Polymarket (with specific odds)
-7. Web sources (only when social sources don't cover the fact)
-
-The tool's value is surfacing what PEOPLE are saying, not what journalists wrote.
+Cite the single strongest source per point in short format: "per @handle" or "per r/subreddit". Save engagement metrics for the stats section. Use the priority order from source weighting above. The tool's value is surfacing what PEOPLE are saying, not what journalists wrote.
 
 ### Comparison queries
 
 For "X vs Y" queries, structure output as:
-- Quick Verdict (1-2 sentences, data-driven)
-- Per-entity: community sentiment, strengths, weaknesses with source attribution
-- Head-to-Head table with key dimensions
-- Bottom Line: "Choose X if... Choose Y if..." based on community data
+
+```
+## Quick Verdict
+[1-2 sentences: which one the community prefers and why, with source counts]
+
+## [Entity A]
+**Community Sentiment:** [Positive/Mixed/Negative] (N mentions across sources)
+**Strengths:** [with source attribution]
+**Weaknesses:** [with source attribution]
+
+## [Entity B]
+[Same structure]
+
+## Head-to-Head
+| Dimension | Entity A | Entity B |
+|-----------|----------|----------|
+| [Key dim] | [position] | [position] |
+
+## Bottom Line
+Choose A if... Choose B if... (based on community data)
+```
 
 ### Recommendation queries
 
-When users ask "best X" or "top X", extract SPECIFIC NAMES from the research:
-- Count how many times each is mentioned across sources
-- Note which sources recommend each
-- List by popularity/mention count with source attribution
+When users ask "best X" or "top X", extract SPECIFIC NAMES:
+
+```
+Most mentioned:
+[Name] -- Nx mentions
+  Sources: @handle1, r/subreddit, [YouTube channel]
+
+[Name] -- Nx mentions
+  Sources: @handle2, r/subreddit2
+
+Notable mentions: [others with 1-2 mentions]
+```
+
+### Edge cases
+
+- **Empty results from a source:** State what is missing. ("No Reddit discussion found for this topic.") Do not fill the gap with training data.
+- **Sources contradict each other:** Present both sides with attribution. ("Reddit r/fitness is bullish on X, while @DrExpert on X warns about Y.")
+- **All results are low-engagement or off-topic:** Acknowledge uncertainty. ("Limited recent discussion found -- these findings should be treated as preliminary.")
 
 ### Follow-up conversations
 
-After research completes, treat yourself as an expert on this topic:
-- Answer follow-ups from the research findings, not new searches
-- Cite the specific Reddit threads, X posts, and YouTube channels you found
-- Only do new research if the user explicitly asks about a DIFFERENT topic
+After research completes, treat yourself as an expert on this topic. Answer follow-ups from the research findings. Cite the specific threads, posts, and channels you found. Only run new research if the user asks about a DIFFERENT topic.
 
 ## Security and permissions
 
