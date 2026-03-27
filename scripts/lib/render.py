@@ -118,6 +118,11 @@ def _render_candidate(candidate: schema.Candidate, prefix: str) -> list[str]:
     insight = _comment_insight(primary)
     if insight:
         lines.append(f"   - Insight: {_truncate(insight, 220)}")
+    highlights = _transcript_highlights(primary)
+    if highlights:
+        lines.append("   - Highlights:")
+        for hl in highlights:
+            lines.append(f'     - "{_truncate(hl, 200)}"')
     return lines
 
 
@@ -265,6 +270,12 @@ def _comment_insight(item: schema.SourceItem | None) -> str | None:
     if not insights:
         return None
     return str(insights[0]).strip() or None
+
+
+def _transcript_highlights(item: schema.SourceItem | None) -> list[str]:
+    if not item or item.source != "youtube":
+        return []
+    return (item.metadata.get("transcript_highlights") or [])[:5]
 
 
 def _source_label(source: str) -> str:

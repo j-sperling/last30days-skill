@@ -191,6 +191,10 @@ def _normalize_youtube(
     transcript = str(item.get("transcript_snippet") or "").strip()
     description = str(item.get("description") or "").strip()
     title = str(item.get("title") or "").strip()
+    highlights = item.get("transcript_highlights") or []
+    metadata: dict[str, Any] = {}
+    if highlights:
+        metadata["transcript_highlights"] = highlights
     return _source_item(
         item_id=str(item.get("video_id") or item.get("id") or f"YT{index + 1}"),
         source=source,
@@ -204,6 +208,7 @@ def _normalize_youtube(
         relevance_hint=item.get("relevance", 0.5),
         why_relevant=str(item.get("why_relevant") or ""),
         snippet=transcript,
+        metadata=metadata,
     )
 
 
