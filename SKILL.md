@@ -125,3 +125,5 @@ Important report fields:
 - Prefer `--emit=json` when downstream code or evaluation will consume the result.
 - Use `--search=` only when the user explicitly wants source restrictions.
 - Do not describe the old source-first layout or the removed Brave / OpenRouter / Parallel web stack. Those are not part of v3.
+- **For YouTube:** Quote transcript highlights directly in synthesis. These are pre-extracted key moments from the video -- treat them like Reddit top comments. Attribute to the channel name.
+- **For Reddit:** Pay special attention to top comments. When a top comment has high upvotes, quote it directly in synthesis.
