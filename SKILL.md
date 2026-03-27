@@ -1,7 +1,7 @@
 ---
 name: last30days
 version: "3.0.0"
-description: "Cluster-first last-30-days research across social, market, and grounded web sources."
+description: "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web."
 argument-hint: "last30days codex vs claude code"
 allowed-tools: Bash, Read, Write, WebSearch
 homepage: https://github.com/mvanhorn/last30days-skill
@@ -26,15 +26,32 @@ metadata:
         - AUTH_TOKEN
         - CT0
       bins:
+        - node
         - python3
+    primaryEnv: GOOGLE_API_KEY
     files:
       - "scripts/*"
     homepage: https://github.com/mvanhorn/last30days-skill
     tags:
       - research
+      - deep-research
+      - reddit
+      - x
+      - twitter
+      - youtube
+      - tiktok
+      - instagram
+      - hackernews
+      - polymarket
+      - bluesky
+      - truthsocial
+      - trends
       - recency
-      - web-search
+      - news
+      - citations
       - multi-source
+      - social-media
+      - web-search
       - analysis
 ---
 

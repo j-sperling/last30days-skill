@@ -26,6 +26,7 @@ metadata:
         - AUTH_TOKEN
         - CT0
       bins:
+        - node
         - python3
     files:
       - "scripts/*"
@@ -37,8 +38,7 @@ metadata:
       - watchlist
       - briefing
       - history
-      - grounding
-      - gemini
+      - web-search
       - multi-source
       - analysis
 ---

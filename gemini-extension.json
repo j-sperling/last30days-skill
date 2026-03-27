@@ -1,101 +1,95 @@
 {
   "name": "last30days-skill",
   "version": "3.0.0",
-  "description": "Cluster-first last-30-days research across social, market, and dated web sources, with Gemini 3.1 preview as the default reasoning runtime.",
+  "description": "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web.",
   "settings": [
     {
       "name": "Google API Key",
-      "description": "Required when using Gemini for planning and reranking",
+      "description": "Enables Gemini for planning and reranking. One reasoning provider is required (Google, OpenAI, or xAI).",
       "envVar": "GOOGLE_API_KEY",
       "sensitive": true
     },
     {
       "name": "Brave API Key",
-      "description": "Optional. Recommended web retrieval backend",
+      "description": "Enables Brave web search (recommended). Falls back to Serper if not set.",
       "envVar": "BRAVE_API_KEY",
       "sensitive": true
     },
     {
       "name": "Serper API Key",
-      "description": "Optional. Web retrieval fallback when Brave is not configured",
+      "description": "Web search fallback when Brave is not configured ($0.56/1K queries)",
       "envVar": "SERPER_API_KEY",
       "sensitive": true
     },
     {
       "name": "ScrapeCreators API Key",
-      "description": "Optional. Enables Reddit, TikTok, and Instagram retrieval",
+      "description": "Enables Reddit, TikTok, and Instagram search. Without this, those three sources are unavailable.",
       "envVar": "SCRAPECREATORS_API_KEY",
       "sensitive": true
     },
     {
       "name": "OpenAI API Key",
-      "description": "Optional fallback reasoning provider",
+      "description": "Alternative reasoning provider. Falls back from Gemini automatically.",
       "envVar": "OPENAI_API_KEY",
       "sensitive": true
     },
     {
       "name": "xAI API Key",
-      "description": "Optional xAI reasoning provider and X search backend",
+      "description": "Enables xAI reasoning and X/Twitter search via Grok",
       "envVar": "XAI_API_KEY",
       "sensitive": true
     },
     {
       "name": "Reasoning Provider",
-      "description": "Optional. One of auto, gemini, openai, or xai",
+      "description": "Which LLM for planning/reranking: auto (default), gemini, openai, or xai",
       "envVar": "LAST30DAYS_REASONING_PROVIDER",
       "sensitive": false
     },
     {
       "name": "Planner Model",
-      "description": "Optional. Must remain a Gemini 3.1 preview model when using Gemini",
+      "description": "Override planner model. Must be a Gemini 3.1 preview model when using Gemini.",
       "envVar": "LAST30DAYS_PLANNER_MODEL",
       "sensitive": false
     },
     {
       "name": "Rerank Model",
-      "description": "Optional. Must remain a Gemini 3.1 preview model when using Gemini",
+      "description": "Override reranker model. Must be a Gemini 3.1 preview model when using Gemini.",
       "envVar": "LAST30DAYS_RERANK_MODEL",
       "sensitive": false
     },
     {
-      "name": "Grounding Model",
-      "description": "Optional compatibility field. If set, it must remain a Gemini 3.1 preview model",
-      "envVar": "LAST30DAYS_GROUNDING_MODEL",
-      "sensitive": false
-    },
-    {
-      "name": "X Backend",
-      "description": "Optional. One of xai or bird",
+      "name": "X Search Backend",
+      "description": "X/Twitter search method: xai (Grok, default) or bird (browser cookie auth)",
       "envVar": "LAST30DAYS_X_BACKEND",
       "sensitive": false
     },
     {
       "name": "Bluesky Handle",
-      "description": "Optional. Enables Bluesky search",
+      "description": "Your Bluesky handle (e.g. user.bsky.social). Enables Bluesky search.",
       "envVar": "BSKY_HANDLE",
       "sensitive": false
     },
     {
       "name": "Bluesky App Password",
-      "description": "Optional. Pair with BSKY_HANDLE",
+      "description": "Bluesky app password. Pair with BSKY_HANDLE.",
       "envVar": "BSKY_APP_PASSWORD",
       "sensitive": true
     },
     {
       "name": "Truth Social Token",
-      "description": "Optional. Enables Truth Social search",
+      "description": "Enables Truth Social search",
       "envVar": "TRUTHSOCIAL_TOKEN",
       "sensitive": true
     },
     {
-      "name": "Twitter AUTH_TOKEN",
-      "description": "Optional Bird X cookie",
+      "name": "X Browser AUTH_TOKEN",
+      "description": "Twitter/X browser cookie for direct search. Pair with CT0.",
       "envVar": "AUTH_TOKEN",
       "sensitive": true
     },
     {
-      "name": "Twitter CT0",
-      "description": "Optional Bird X cookie, pair with AUTH_TOKEN",
+      "name": "X Browser CT0",
+      "description": "Twitter/X browser cookie. Pair with AUTH_TOKEN.",
       "envVar": "CT0",
       "sensitive": true
     }

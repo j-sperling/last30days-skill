@@ -1,7 +1,7 @@
 {
   "name": "last30days",
   "version": "3.0.0",
-  "description": "Cluster-first last-30-days research across social, market, and grounded web sources.",
+  "description": "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web.",
   "author": {
     "name": "Matt Van Horn",
     "email": "mvanhorn@gmail.com",
@@ -12,14 +12,24 @@
   "license": "MIT",
   "keywords": [
     "research",
+    "deep-research",
     "reddit",
     "twitter",
     "youtube",
     "tiktok",
     "instagram",
-    "grounding",
+    "hackernews",
     "polymarket",
-    "multi-source"
+    "bluesky",
+    "truthsocial",
+    "trends",
+    "recency",
+    "news",
+    "citations",
+    "multi-source",
+    "social-media",
+    "web-search",
+    "analysis"
   ],
   "skills": ["./"],
   "hooks": {}

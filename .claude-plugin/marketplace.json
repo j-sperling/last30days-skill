@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "last30days-skill",
-  "description": "Cluster-first last-30-days research across social, market, and grounded web sources.",
+  "description": "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web.",
   "owner": {
     "name": "Matt Van Horn",
     "url": "https://github.com/mvanhorn"
@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "last30days",
-      "description": "Cluster-first last-30-days research across social, market, and grounded web sources.",
+      "description": "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web.",
       "version": "3.0.0",
       "author": {
         "name": "Matt Van Horn",
