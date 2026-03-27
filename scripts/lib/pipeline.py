@@ -475,11 +475,16 @@ def _retry_thin_sources(
     if depth == "quick":
         return
 
-    planned_sources = {s for sq in plan.subqueries for s in sq.sources}
+    planned_sources: list[str] = []
+    for subquery in plan.subqueries:
+        for source in subquery.sources:
+            if source not in planned_sources:
+                planned_sources.append(source)
     thin_sources = [
-        source for source, items in bundle.items_by_source.items()
-        if len(items) < 3 and source not in bundle.errors_by_source
-        and source in planned_sources
+        source
+        for source in planned_sources
+        if len(bundle.items_by_source.get(source, [])) < 3
+        and source not in bundle.errors_by_source
     ]
 
     if not thin_sources:
@@ -504,7 +509,7 @@ def _retry_thin_sources(
         if source in rate_limited_sources:
             continue
         try:
-            raw_items, artifact = _retrieve_stream(
+            raw_items, _artifact = _retrieve_stream(
                 topic=topic,
                 subquery=retry_subquery,
                 source=source,
@@ -512,20 +517,19 @@ def _retry_thin_sources(
                 depth=depth,
                 date_range=date_range,
                 runtime=runtime,
-                        mock=mock,
+                mock=mock,
                 rate_limited_sources=rate_limited_sources,
                 rate_limit_lock=rate_limit_lock,
                 web_backend=web_backend,
             )
-            normalized = normalize.normalize_source_items(
-                source, raw_items, from_date, to_date,
+            normalized = _normalize_score_dedupe(
+                source,
+                raw_items,
+                from_date,
+                to_date,
                 freshness_mode=plan.freshness_mode,
+                ranking_query=retry_subquery.ranking_query,
             )
-            normalized = signals.annotate_stream(normalized, retry_subquery.ranking_query, plan.freshness_mode)
-            normalized = signals.prune_low_relevance(normalized)
-            normalized = dedupe.dedupe_items(normalized)
-            for item in normalized:
-                item.snippet = snippet.extract_best_snippet(item, retry_subquery.ranking_query)
             normalized = normalized[:settings["per_stream_limit"]]
 
             existing_urls = {item.url for item in bundle.items_by_source.get(source, []) if item.url}

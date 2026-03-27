@@ -10,7 +10,7 @@ from lib import grounding
 
 
 class BraveSearchTests(unittest.TestCase):
-    def test_brave_search_parses_results(self):
+    def test_brave_search_applies_freshness_and_filters_to_in_range_dated_items(self):
         mock_response = {
             "web": {
                 "results": [
@@ -19,6 +19,17 @@ class BraveSearchTests(unittest.TestCase):
                         "url": "https://example.com/article",
                         "description": "A test snippet",
                         "page_age": "2026-03-10T00:00:00",
+                    },
+                    {
+                        "title": "Old Article",
+                        "url": "https://example.com/old",
+                        "description": "Should be filtered",
+                        "page_age": "2025-12-10T00:00:00",
+                    },
+                    {
+                        "title": "Undated Article",
+                        "url": "https://example.com/undated",
+                        "description": "Should also be filtered",
                     }
                 ]
             }
@@ -36,10 +47,12 @@ class BraveSearchTests(unittest.TestCase):
             self.assertEqual("https://example.com/article", items[0]["url"])
             self.assertEqual("2026-03-10", items[0]["date"])
             self.assertEqual("brave", artifact["label"])
+            request = mock_urlopen.call_args.args[0]
+            self.assertIn("freshness=2026-02-25to2026-03-27", request.full_url)
 
 
 class SerperSearchTests(unittest.TestCase):
-    def test_serper_search_parses_results(self):
+    def test_serper_search_filters_to_in_range_dated_items(self):
         mock_response = {
             "organic": [
                 {
@@ -47,6 +60,17 @@ class SerperSearchTests(unittest.TestCase):
                     "link": "https://example.com/serper",
                     "snippet": "A serper snippet",
                     "date": "Mar 15, 2026",
+                },
+                {
+                    "title": "Old Result",
+                    "link": "https://example.com/old",
+                    "snippet": "Should be filtered",
+                    "date": "Jan 15, 2026",
+                },
+                {
+                    "title": "Undated Result",
+                    "link": "https://example.com/undated",
+                    "snippet": "Should also be filtered",
                 }
             ]
         }

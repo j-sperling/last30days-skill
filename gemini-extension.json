@@ -1,12 +1,24 @@
 {
   "name": "last30days-skill",
   "version": "3.0.0",
-  "description": "Cluster-first last-30-days research across social, market, and grounded web sources, powered by Gemini 3.1 preview.",
+  "description": "Cluster-first last-30-days research across social, market, and dated web sources, with Gemini 3.1 preview as the default reasoning runtime.",
   "settings": [
     {
       "name": "Google API Key",
-      "description": "Required for Gemini 3.1 preview planning, reranking, and Google Search grounding",
+      "description": "Required when using Gemini for planning and reranking",
       "envVar": "GOOGLE_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "Brave API Key",
+      "description": "Optional. Recommended web retrieval backend",
+      "envVar": "BRAVE_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "Serper API Key",
+      "description": "Optional. Web retrieval fallback when Brave is not configured",
+      "envVar": "SERPER_API_KEY",
       "sensitive": true
     },
     {
@@ -47,7 +59,7 @@
     },
     {
       "name": "Grounding Model",
-      "description": "Optional. Must remain a Gemini 3.1 preview model",
+      "description": "Optional compatibility field. If set, it must remain a Gemini 3.1 preview model",
       "envVar": "LAST30DAYS_GROUNDING_MODEL",
       "sensitive": false
     },

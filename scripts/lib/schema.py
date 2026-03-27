@@ -21,6 +21,13 @@ def _drop_none(value: Any) -> Any:
     return value
 
 
+def _first_non_none(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 @dataclass(frozen=True)
 class ProviderRuntime:
     """Resolved runtime provider selection."""
@@ -215,15 +222,15 @@ def source_item_from_dict(payload: dict[str, Any]) -> SourceItem:
         published_at=payload.get("published_at"),
         date_confidence=payload.get("date_confidence") or "low",
         engagement=dict(payload.get("engagement") or {}),
-        relevance_hint=float(payload.get("relevance_hint") or 0.5),
+        relevance_hint=float(_first_non_none(payload.get("relevance_hint"), 0.5)),
         why_relevant=payload.get("why_relevant") or "",
         snippet=payload.get("snippet") or "",
         metadata=dict(meta),
-        local_relevance=payload.get("local_relevance") or meta.get("local_relevance"),
-        freshness=payload.get("freshness") or meta.get("freshness"),
-        engagement_score=payload.get("engagement_score") or meta.get("engagement_score"),
-        source_quality=payload.get("source_quality") or meta.get("source_quality"),
-        local_rank_score=payload.get("local_rank_score") or meta.get("local_rank_score"),
+        local_relevance=_first_non_none(payload.get("local_relevance"), meta.get("local_relevance")),
+        freshness=_first_non_none(payload.get("freshness"), meta.get("freshness")),
+        engagement_score=_first_non_none(payload.get("engagement_score"), meta.get("engagement_score")),
+        source_quality=_first_non_none(payload.get("source_quality"), meta.get("source_quality")),
+        local_rank_score=_first_non_none(payload.get("local_rank_score"), meta.get("local_rank_score")),
     )
 
 
@@ -237,15 +244,15 @@ def candidate_from_dict(payload: dict[str, Any]) -> Candidate:
         snippet=payload.get("snippet") or "",
         subquery_labels=list(payload.get("subquery_labels") or []),
         native_ranks={key: int(value) for key, value in (payload.get("native_ranks") or {}).items()},
-        local_relevance=float(payload.get("local_relevance") or 0.0),
-        freshness=int(payload.get("freshness") or 0),
+        local_relevance=float(_first_non_none(payload.get("local_relevance"), 0.0)),
+        freshness=int(_first_non_none(payload.get("freshness"), 0)),
         engagement=payload.get("engagement"),
-        source_quality=float(payload.get("source_quality") or 0.0),
-        rrf_score=float(payload.get("rrf_score") or 0.0),
+        source_quality=float(_first_non_none(payload.get("source_quality"), 0.0)),
+        rrf_score=float(_first_non_none(payload.get("rrf_score"), 0.0)),
         sources=list(payload.get("sources") or []),
         source_items=[source_item_from_dict(item) for item in payload.get("source_items") or []],
         rerank_score=float(payload["rerank_score"]) if payload.get("rerank_score") is not None else None,
-        final_score=float(payload.get("final_score") or 0.0),
+        final_score=float(_first_non_none(payload.get("final_score"), 0.0)),
         explanation=payload.get("explanation"),
         cluster_id=payload.get("cluster_id"),
         metadata=dict(payload.get("metadata") or {}),
@@ -259,7 +266,7 @@ def cluster_from_dict(payload: dict[str, Any]) -> Cluster:
         candidate_ids=list(payload.get("candidate_ids") or []),
         representative_ids=list(payload.get("representative_ids") or []),
         sources=list(payload.get("sources") or []),
-        score=float(payload.get("score") or 0.0),
+        score=float(_first_non_none(payload.get("score"), 0.0)),
         uncertainty=payload.get("uncertainty"),
     )
 
@@ -300,7 +307,6 @@ def candidate_best_published_at(candidate: Candidate) -> str | None:
         (item.published_at for item in candidate.source_items if item.published_at),
         default=None,
     )
-    return None
 
 
 def candidate_primary_item(candidate: Candidate) -> SourceItem | None:

@@ -62,6 +62,29 @@ class SchemaV3Tests(unittest.TestCase):
         self.assertEqual(report.ranked_candidates[0].sources, restored.ranked_candidates[0].sources)
         self.assertEqual(report.items_by_source["grounding"][0].title, restored.items_by_source["grounding"][0].title)
 
+    def test_source_item_from_dict_preserves_zero_valued_signals(self):
+        item = schema.source_item_from_dict(
+            {
+                "item_id": "x1",
+                "source": "x",
+                "title": "Title",
+                "body": "Body",
+                "url": "https://example.com",
+                "relevance_hint": 0.0,
+                "local_relevance": 0.0,
+                "freshness": 0,
+                "engagement_score": 0,
+                "source_quality": 0.0,
+                "local_rank_score": 0.0,
+            }
+        )
+        self.assertEqual(0.0, item.relevance_hint)
+        self.assertEqual(0.0, item.local_relevance)
+        self.assertEqual(0, item.freshness)
+        self.assertEqual(0, item.engagement_score)
+        self.assertEqual(0.0, item.source_quality)
+        self.assertEqual(0.0, item.local_rank_score)
+
 
 if __name__ == "__main__":
     unittest.main()

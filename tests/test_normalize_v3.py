@@ -29,7 +29,7 @@ class NormalizeV3Tests(unittest.TestCase):
         self.assertEqual(1, len(normalized))
         self.assertEqual("2026-01-10", normalized[0].published_at)
 
-    def test_grounding_evergreen_fallback_keeps_older_dated_items(self):
+    def test_grounding_still_drops_older_items_in_evergreen_mode(self):
         items = [
             {
                 "id": "g-1",
@@ -47,8 +47,24 @@ class NormalizeV3Tests(unittest.TestCase):
             "2026-03-17",
             freshness_mode="evergreen_ok",
         )
-        self.assertEqual(1, len(normalized))
-        self.assertEqual("2026-01-08", normalized[0].published_at)
+        self.assertEqual([], normalized)
+
+    def test_grounding_requires_a_usable_date(self):
+        items = [
+            {
+                "id": "g-1",
+                "title": "Undated result",
+                "url": "https://example.com/undated",
+                "snippet": "No date attached.",
+            }
+        ]
+        normalized = normalize.normalize_source_items(
+            "grounding",
+            items,
+            "2026-02-15",
+            "2026-03-17",
+        )
+        self.assertEqual([], normalized)
 
 
 if __name__ == "__main__":

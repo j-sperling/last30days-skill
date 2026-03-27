@@ -13,9 +13,8 @@ metadata:
   openclaw:
     emoji: "📰"
     requires:
-      env:
-        - GOOGLE_API_KEY
       optionalEnv:
+        - GOOGLE_API_KEY
         - SCRAPECREATORS_API_KEY
         - BRAVE_API_KEY
         - SERPER_API_KEY
@@ -28,7 +27,6 @@ metadata:
         - CT0
       bins:
         - python3
-    primaryEnv: GOOGLE_API_KEY
     files:
       - "scripts/*"
     homepage: https://github.com/mvanhorn/last30days-skill
@@ -96,13 +94,14 @@ python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 
 ## Runtime expectations
 
-- `GOOGLE_API_KEY` enables Gemini planning and reranking. Not required if `OPENAI_API_KEY` or `XAI_API_KEY` is set.
-- `BRAVE_API_KEY` enables Brave web search (recommended). `SERPER_API_KEY` is an alternative.
+- One reasoning provider is required: `GOOGLE_API_KEY` for Gemini, `OPENAI_API_KEY` for OpenAI, or `XAI_API_KEY` for xAI.
+- `BRAVE_API_KEY` enables Brave web search (recommended). `SERPER_API_KEY` is the web fallback.
 - `SCRAPECREATORS_API_KEY` enables Reddit, TikTok, and Instagram.
 - `XAI_API_KEY` enables xAI reasoning and X search.
 - `AUTH_TOKEN` plus `CT0` enables Bird-backed X search.
 - `yt-dlp` enables YouTube.
 - Planning and reranking fall back gracefully: Gemini -> OpenAI -> xAI -> deterministic/local.
+- Web retrieval stays within Brave/Serper dated results. Undated web hits are dropped.
 - For OpenClaw-specific watchlist, briefing, and history workflows, use `variants/open/SKILL.md`.
 
 ## Output model

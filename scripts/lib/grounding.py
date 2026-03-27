@@ -18,7 +18,16 @@ from . import dates
 def brave_search(
     query: str, date_range: tuple[str, str], api_key: str, count: int = 5,
 ) -> tuple[list[dict], dict]:
-    url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}&count={count}"
+    url = (
+        "https://api.search.brave.com/res/v1/web/search?"
+        + urllib.parse.urlencode(
+            {
+                "q": query,
+                "count": count,
+                "freshness": f"{date_range[0]}to{date_range[1]}",
+            }
+        )
+    )
     req = urllib.request.Request(url, headers={"X-Subscription-Token": api_key})
     with urllib.request.urlopen(req, timeout=15) as resp:
         data = json.loads(resp.read())
@@ -26,6 +35,8 @@ def brave_search(
     for i, r in enumerate((data.get("web", {}).get("results", []))[:count]):
         raw_date = r.get("page_age") or ""
         pub_date = _normalize_date(raw_date[:10]) if raw_date else None
+        if not _in_date_range(pub_date, date_range):
+            continue
         items.append({
             "id": f"WB{i + 1}",
             "title": r.get("title", ""),
@@ -58,6 +69,8 @@ def serper_search(
     for i, r in enumerate((data.get("organic", []))[:count]):
         raw_date = r.get("date") or ""
         pub_date = _parse_serper_date(raw_date)
+        if not _in_date_range(pub_date, date_range):
+            continue
         items.append({
             "id": f"WS{i + 1}",
             "title": r.get("title", ""),
@@ -122,6 +135,13 @@ def _normalize_date(value: object) -> str | None:
     if not parsed:
         return None
     return parsed.date().isoformat()
+
+
+def _in_date_range(published_at: str | None, date_range: tuple[str, str]) -> bool:
+    if not published_at:
+        return False
+    start, end = date_range
+    return start <= published_at <= end
 
 
 def _domain(url: str) -> str:

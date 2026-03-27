@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -76,6 +77,7 @@ class SkillSurfaceV3Tests(unittest.TestCase):
             REPO_ROOT / "variants" / "open" / "references" / "watchlist.md",
             REPO_ROOT / "variants" / "open" / "references" / "briefing.md",
             REPO_ROOT / "variants" / "open" / "references" / "history.md",
+            REPO_ROOT / "variants" / "open" / "references" / "research.md",
         ]:
             self.assertTrue(path.exists(), path)
 
@@ -97,6 +99,12 @@ class SkillSurfaceV3Tests(unittest.TestCase):
         self.assertIn("watchlist.py", sync_script)
         self.assertIn("briefing.py", sync_script)
         self.assertIn("store.py", sync_script)
+
+    def test_gemini_extension_exposes_current_web_backend_settings(self):
+        payload = json.loads((REPO_ROOT / "gemini-extension.json").read_text())
+        env_vars = {setting["envVar"] for setting in payload["settings"]}
+        self.assertIn("BRAVE_API_KEY", env_vars)
+        self.assertIn("SERPER_API_KEY", env_vars)
 
 
 if __name__ == "__main__":

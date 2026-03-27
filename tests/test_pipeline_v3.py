@@ -138,6 +138,69 @@ class TestRateLimitSharing(unittest.TestCase):
         self.assertEqual(artifact, {})
 
 
+class TestThinSourceRetry(unittest.TestCase):
+    @patch("lib.pipeline._retrieve_stream")
+    def test_retry_includes_planned_source_with_zero_initial_items(self, mock_retrieve):
+        mock_retrieve.return_value = (
+            [
+                {
+                    "id": "X100",
+                    "text": "OpenClaw funding update from an investor",
+                    "url": "https://x.com/example/status/100",
+                    "author_handle": "example",
+                    "date": "2026-03-15",
+                    "engagement": {"likes": 25, "reposts": 4, "replies": 2},
+                    "relevance": 0.8,
+                    "why_relevant": "retry result",
+                }
+            ],
+            {},
+        )
+
+        plan = schema.QueryPlan(
+            intent="breaking_news",
+            freshness_mode="strict_recent",
+            cluster_mode="story",
+            raw_topic="latest OpenClaw funding updates",
+            subqueries=[
+                schema.SubQuery(
+                    label="primary",
+                    search_query="latest OpenClaw funding updates",
+                    ranking_query="What recent evidence matters for OpenClaw funding?",
+                    sources=["x", "reddit"],
+                )
+            ],
+            source_weights={"x": 1.0, "reddit": 1.0},
+        )
+        bundle = schema.RetrievalBundle(
+            items_by_source={
+                "reddit": [
+                    _make_source_item("reddit", "r1", "https://reddit.com/1"),
+                    _make_source_item("reddit", "r2", "https://reddit.com/2"),
+                    _make_source_item("reddit", "r3", "https://reddit.com/3"),
+                ]
+            }
+        )
+
+        pipeline._retry_thin_sources(
+            topic="latest OpenClaw funding updates",
+            bundle=bundle,
+            plan=plan,
+            config={},
+            depth="default",
+            date_range=("2026-02-15", "2026-03-17"),
+            runtime=_make_runtime("bird"),
+            mock=False,
+            rate_limited_sources=set(),
+            rate_limit_lock=threading.Lock(),
+            settings=pipeline.DEPTH_SETTINGS["default"],
+        )
+
+        self.assertEqual(["x"], [call.kwargs["source"] for call in mock_retrieve.call_args_list])
+        self.assertIn("x", bundle.items_by_source)
+        self.assertEqual("https://x.com/example/status/100", bundle.items_by_source["x"][0].url)
+
+
 def _make_runtime(x_backend="bird"):
     return schema.ProviderRuntime(
         reasoning_provider="mock",

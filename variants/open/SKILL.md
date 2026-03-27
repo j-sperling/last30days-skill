@@ -13,9 +13,10 @@ metadata:
   openclaw:
     emoji: "📰"
     requires:
-      env:
-        - GOOGLE_API_KEY
       optionalEnv:
+        - GOOGLE_API_KEY
+        - BRAVE_API_KEY
+        - SERPER_API_KEY
         - SCRAPECREATORS_API_KEY
         - OPENAI_API_KEY
         - XAI_API_KEY
@@ -26,7 +27,6 @@ metadata:
         - CT0
       bins:
         - python3
-    primaryEnv: GOOGLE_API_KEY
     files:
       - "scripts/*"
       - "variants/open/*"
@@ -94,10 +94,11 @@ At session start, read `${SKILL_ROOT}/variants/open/context.md`.
 
 ## Runtime expectations
 
-- `GOOGLE_API_KEY` is the primary credential. It enables Gemini planning, reranking, and Google Search grounding.
+- One reasoning provider is required: `GOOGLE_API_KEY` for Gemini, `OPENAI_API_KEY` for OpenAI, or `XAI_API_KEY` for xAI.
+- `BRAVE_API_KEY` enables Brave web search (recommended). `SERPER_API_KEY` is the web fallback.
 - OpenClaw can supply env vars through `~/.openclaw/.env` or `~/.openclaw/openclaw.json`.
 - `last30days` also reads process env, repo `.claude/last30days.env`, and `~/.config/last30days/.env`.
-- This open variant uses Gemini grounded web retrieval. It does not depend on the removed Brave / Parallel / OpenRouter stack.
+- This open variant uses the same Brave/Serper web retrieval path as the main v3 pipeline.
 
 ## Command routing
 

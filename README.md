@@ -15,14 +15,14 @@ The current runtime is a hard-cut v3 pipeline:
 
 ## Runtime
 
-Gemini `3.1` preview is the primary runtime:
+Gemini `3.1` preview is the default reasoning runtime:
 
 - planner: `gemini-3.1-flash-lite-preview`
 - rerank `quick` / `default`: `gemini-3.1-flash-lite-preview`
 - rerank `deep`: `gemini-3.1-pro-preview`
-- Google Search grounding: `gemini-3.1-flash-lite-preview`
+- web retrieval: Brave Search (preferred) or Serper
 
-OpenAI and xAI are still supported as fallback reasoning providers. X retrieval can use xAI or Bird cookie auth. Public web retrieval is grounded through Gemini.
+OpenAI and xAI are still supported as reasoning providers. X retrieval can use xAI or Bird cookie auth. Public web retrieval now uses Brave or Serper and only keeps dated in-window results.
 
 ### Query planning
 
@@ -75,6 +75,8 @@ Primary environment variables:
 
 ```bash
 GOOGLE_API_KEY=...
+BRAVE_API_KEY=...
+SERPER_API_KEY=...
 SCRAPECREATORS_API_KEY=...
 OPENAI_API_KEY=...
 XAI_API_KEY=...
@@ -86,7 +88,6 @@ CT0=...
 LAST30DAYS_REASONING_PROVIDER=auto
 LAST30DAYS_PLANNER_MODEL=gemini-3.1-flash-lite-preview
 LAST30DAYS_RERANK_MODEL=gemini-3.1-flash-lite-preview
-LAST30DAYS_GROUNDING_MODEL=gemini-3.1-flash-lite-preview
 LAST30DAYS_X_BACKEND=xai
 ```
 
@@ -105,7 +106,7 @@ The repo now supports two skill wrappers on top of the same v3 engine:
 - root [SKILL.md](/Users/js/projects/last30days-skill/SKILL.md): one-shot research for Claude Code, Codex, Gemini, and basic OpenClaw installs
 - [variants/open/SKILL.md](/Users/js/projects/last30days-skill/variants/open/SKILL.md): persistent OpenClaw-style workflow with watchlists, briefings, and history
 
-The OpenClaw variant restores the upstream `watch`, `briefing`, and `history` behavior on top of the v3 pipeline. It does not restore the removed Brave / Parallel / OpenRouter web stack. Public web retrieval stays on Gemini grounding.
+The OpenClaw variant restores the upstream `watch`, `briefing`, and `history` behavior on top of the v3 pipeline. One-shot requests use the same Brave/Serper web retrieval path as the main skill.
 
 ## CLI
 

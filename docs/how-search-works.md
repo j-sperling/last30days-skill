@@ -29,14 +29,14 @@ Core modules:
 
 ## Providers
 
-Gemini `3.1` preview is the primary runtime:
+Gemini `3.1` preview is the default reasoning runtime:
 
 - planner: `gemini-3.1-flash-lite-preview`
 - rerank `quick` / `default`: `gemini-3.1-flash-lite-preview`
 - rerank `deep`: `gemini-3.1-pro-preview`
-- Google Search grounding: `gemini-3.1-flash-lite-preview`
+- web retrieval: Brave Search (preferred) or Serper
 
-OpenAI and xAI can still provide planner and rerank responses when configured. X search can use xAI or Bird cookie auth. Public web retrieval is grounded through Gemini.
+OpenAI and xAI can still provide planner and rerank responses when configured. X search can use xAI or Bird cookie auth. Public web retrieval now uses Brave or Serper and drops undated web hits.
 
 ## Query planning
 
