@@ -24,7 +24,8 @@ class PipelineV3Tests(unittest.TestCase):
         self.assertTrue(report.ranked_candidates)
         self.assertTrue(report.clusters)
         self.assertIn("x", report.items_by_source)
-        self.assertNotIn("grounding", report.items_by_source)
+        # Grounding items now enter the ranked pool (web search backends produce real items)
+        self.assertIn("grounding", report.items_by_source)
         self.assertEqual("gemini", report.provider_runtime.reasoning_provider)
         self.assertTrue(report.provider_runtime.grounding_model.startswith("gemini-3.1-"))
 
@@ -129,7 +130,6 @@ class TestRateLimitSharing(unittest.TestCase):
                 rerank_model="mock",
                 grounding_model="mock",
             ),
-            grounding_provider=None,
             mock=True,
             rate_limited_sources=rate_limited,
             rate_limit_lock=lock,
@@ -421,7 +421,6 @@ class TestThinSourceRetry(unittest.TestCase):
             depth="default",
             date_range=("2026-02-15", "2026-03-17"),
             runtime=_make_runtime(),
-            grounding_provider=None,
             mock=False,
             rate_limited_sources=set(),
             rate_limit_lock=threading.Lock(),
@@ -457,8 +456,7 @@ class TestThinSourceRetry(unittest.TestCase):
                 depth="default",
                 date_range=("2026-02-15", "2026-03-17"),
                 runtime=_make_runtime(),
-                grounding_provider=None,
-                mock=False,
+                    mock=False,
                 rate_limited_sources=set(),
                 rate_limit_lock=threading.Lock(),
                 settings=settings,
@@ -485,8 +483,7 @@ class TestThinSourceRetry(unittest.TestCase):
                 depth="default",
                 date_range=("2026-02-15", "2026-03-17"),
                 runtime=_make_runtime(),
-                grounding_provider=None,
-                mock=False,
+                    mock=False,
                 rate_limited_sources=set(),
                 rate_limit_lock=threading.Lock(),
                 settings=settings,
@@ -512,8 +509,7 @@ class TestThinSourceRetry(unittest.TestCase):
                 depth="quick",
                 date_range=("2026-02-15", "2026-03-17"),
                 runtime=_make_runtime(),
-                grounding_provider=None,
-                mock=False,
+                    mock=False,
                 rate_limited_sources=set(),
                 rate_limit_lock=threading.Lock(),
                 settings=settings,

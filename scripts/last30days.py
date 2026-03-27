@@ -122,6 +122,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-dir", help="Optional directory for saving the rendered output")
     parser.add_argument("--store", action="store_true", help="Persist ranked findings to the SQLite research store")
     parser.add_argument("--x-handle", help="X handle for targeted supplemental search")
+    parser.add_argument("--web-backend", default="auto",
+                        choices=["auto", "brave", "serper", "none"],
+                        help="Web search backend (default: auto, tries Brave then Serper)")
     return parser
 
 
@@ -151,6 +154,7 @@ def main() -> int:
         requested_sources=requested_sources,
         mock=args.mock,
         x_handle=args.x_handle,
+        web_backend=args.web_backend,
     )
     if args.store:
         counts = persist_report(report)

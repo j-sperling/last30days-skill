@@ -1,74 +1,91 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
+import json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from lib import grounding, normalize
+from lib import grounding
 
 
-class GroundingV3Tests(unittest.TestCase):
-    def test_grounding_artifact_preserves_answer_text(self):
-        payload = {
-            "candidates": [
+class BraveSearchTests(unittest.TestCase):
+    def test_brave_search_parses_results(self):
+        mock_response = {
+            "web": {
+                "results": [
+                    {
+                        "title": "Test Article",
+                        "url": "https://example.com/article",
+                        "description": "A test snippet",
+                        "page_age": "2026-03-10T00:00:00",
+                    }
+                ]
+            }
+        }
+        with patch("lib.grounding.urllib.request.urlopen") as mock_urlopen:
+            mock_ctx = MagicMock()
+            mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
+            mock_ctx.__exit__ = MagicMock(return_value=False)
+            mock_ctx.read.return_value = json.dumps(mock_response).encode()
+            mock_urlopen.return_value = mock_ctx
+
+            items, artifact = grounding.brave_search("test", ("2026-02-25", "2026-03-27"), "fake-key")
+            self.assertEqual(1, len(items))
+            self.assertEqual("Test Article", items[0]["title"])
+            self.assertEqual("https://example.com/article", items[0]["url"])
+            self.assertEqual("2026-03-10", items[0]["date"])
+            self.assertEqual("brave", artifact["label"])
+
+
+class SerperSearchTests(unittest.TestCase):
+    def test_serper_search_parses_results(self):
+        mock_response = {
+            "organic": [
                 {
-                    "content": {"parts": [{"text": "Grounded summary text."}]},
-                    "groundingMetadata": {
-                        "webSearchQueries": ["test topic"],
-                        "groundingChunks": [],
-                        "groundingSupports": [],
-                    },
+                    "title": "Serper Result",
+                    "link": "https://example.com/serper",
+                    "snippet": "A serper snippet",
+                    "date": "Mar 15, 2026",
                 }
             ]
         }
-        artifact = grounding._artifact_from_payload(payload, "primary")
-        self.assertEqual("Grounded summary text.", artifact["answerText"])
+        with patch("lib.grounding.urllib.request.urlopen") as mock_urlopen:
+            mock_ctx = MagicMock()
+            mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
+            mock_ctx.__exit__ = MagicMock(return_value=False)
+            mock_ctx.read.return_value = json.dumps(mock_response).encode()
+            mock_urlopen.return_value = mock_ctx
 
-    def test_grounding_keeps_dated_and_undated_items(self):
-        """Grounding items pass through regardless of date presence, since the
-        Gemini API rarely returns dates in grounding chunks."""
-        payload = {
-            "candidates": [
-                {
-                    "content": {"parts": [{"text": "Grounded summary text."}]},
-                    "groundingMetadata": {
-                        "groundingChunks": [
-                            {"web": {"uri": "https://example.com/2026/03/10/story", "title": "Recent story"}},
-                            {"web": {"uri": "https://example.com/no-date", "title": "Undated story"}},
-                        ],
-                        "groundingSupports": [
-                            {"segment": {"text": "Support text"}, "groundingChunkIndices": [0, 1]}
-                        ],
-                    },
-                }
-            ]
-        }
-        items = grounding._items_from_grounding_payload(payload, "primary", ("2026-02-14", "2026-03-16"))
-        normalized = normalize.normalize_source_items("grounding", items, "2026-02-14", "2026-03-16")
-        self.assertEqual(2, len(normalized))
-        self.assertEqual("2026-03-10", normalized[0].published_at)
-        self.assertIsNone(normalized[1].published_at)
+            items, artifact = grounding.serper_search("test", ("2026-02-25", "2026-03-27"), "fake-key")
+            self.assertEqual(1, len(items))
+            self.assertEqual("Serper Result", items[0]["title"])
+            self.assertEqual("2026-03-15", items[0]["date"])
+            self.assertEqual("serper", artifact["label"])
 
-    def test_grounding_undated_items_pass_through(self):
-        """Undated grounding items are kept since Gemini grounding chunks
-        rarely carry dates and the API already scopes to recent content."""
-        payload = {
-            "candidates": [
-                {
-                    "content": {"parts": [{"text": "Published: 2026-03-10. Summary."}]},
-                    "groundingMetadata": {
-                        "groundingChunks": [
-                            {"web": {"uri": "https://example.com/no-date", "title": "Undated story"}},
-                        ],
-                        "groundingSupports": [],
-                    },
-                }
-            ]
-        }
-        items = grounding._items_from_grounding_payload(payload, "primary", ("2026-02-14", "2026-03-16"))
-        normalized = normalize.normalize_source_items("grounding", items, "2026-02-14", "2026-03-16")
-        self.assertEqual(1, len(normalized))
-        self.assertIsNone(normalized[0].published_at)
+
+class WebSearchDispatchTests(unittest.TestCase):
+    def test_auto_selects_brave_when_key_present(self):
+        config = {"BRAVE_API_KEY": "test-key"}
+        with patch("lib.grounding.brave_search", return_value=([], {})) as mock:
+            grounding.web_search("test", ("2026-02-25", "2026-03-27"), config, backend="auto")
+            mock.assert_called_once()
+
+    def test_auto_selects_serper_when_only_serper_key(self):
+        config = {"SERPER_API_KEY": "test-key"}
+        with patch("lib.grounding.serper_search", return_value=([], {})) as mock:
+            grounding.web_search("test", ("2026-02-25", "2026-03-27"), config, backend="auto")
+            mock.assert_called_once()
+
+    def test_auto_returns_empty_when_no_keys(self):
+        items, artifact = grounding.web_search("test", ("2026-02-25", "2026-03-27"), {}, backend="auto")
+        self.assertEqual([], items)
+        self.assertEqual({}, artifact)
+
+    def test_none_returns_empty(self):
+        config = {"BRAVE_API_KEY": "test-key"}
+        items, artifact = grounding.web_search("test", ("2026-02-25", "2026-03-27"), config, backend="none")
+        self.assertEqual([], items)
 
 
 if __name__ == "__main__":

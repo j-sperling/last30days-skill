@@ -94,7 +94,7 @@ def available_sources(config: dict[str, Any], requested_sources: list[str] | Non
         available.append("bluesky")
     if env.is_truthsocial_available(config):
         available.append("truthsocial")
-    if google_key:
+    if config.get("BRAVE_API_KEY") or config.get("SERPER_API_KEY"):
         available.append("grounding")
     if requested_sources and "xiaohongshu" in requested_sources and env.is_xiaohongshu_available(config):
         available.append("xiaohongshu")
@@ -124,6 +124,7 @@ def run(
     requested_sources: list[str] | None = None,
     mock: bool = False,
     x_handle: str | None = None,
+    web_backend: str = "auto",
 ) -> schema.Report:
     settings = DEPTH_SETTINGS[depth]
     requested_sources = normalize_requested_sources(requested_sources)
@@ -132,14 +133,16 @@ def run(
     if mock:
         runtime = providers.mock_runtime(config, depth)
         reasoning_provider = None
-        grounding_provider = None
         available = list(requested_sources or MOCK_AVAILABLE_SOURCES)
     else:
         runtime, reasoning_provider = providers.resolve_runtime(config, depth)
-        grounding_provider = _grounding_provider(config, reasoning_provider)
         available = available_sources(config, requested_sources)
         if requested_sources:
             available = [source for source in available if source in requested_sources]
+    if web_backend == "none":
+        available = [s for s in available if s != "grounding"]
+    elif web_backend in ("brave", "serper") and "grounding" not in available:
+        available.append("grounding")
     if not available:
         raise RuntimeError("No sources are available for this run.")
 
@@ -151,6 +154,12 @@ def run(
         provider=None if mock else reasoning_provider,
         model=None if mock else runtime.planner_model,
     )
+
+    # Ensure grounding appears in subquery sources when web backend is active
+    if web_backend != "none" and "grounding" in available:
+        for sq in plan.subqueries:
+            if "grounding" not in sq.sources:
+                sq.sources.append("grounding")
 
     bundle = schema.RetrievalBundle(artifacts={"grounding": []})
 
@@ -190,10 +199,10 @@ def run(
                         depth=depth,
                         date_range=(from_date, to_date),
                         runtime=runtime,
-                        grounding_provider=grounding_provider,
                         mock=mock,
                         rate_limited_sources=rate_limited_sources,
                         rate_limit_lock=rate_limit_lock,
+                        web_backend=web_backend,
                     )
                 ] = (subquery, source)
 
@@ -214,7 +223,7 @@ def run(
                 ranking_query=subquery.ranking_query,
             )
             normalized = normalized[: settings["per_stream_limit"]]
-            if source != "grounding":
+            if source != "grounding" or web_backend != "gemini":
                 bundle.add_items(subquery.label, source, normalized)
             if artifact:
                 bundle.artifacts.setdefault("grounding", []).append(artifact)
@@ -243,11 +252,11 @@ def run(
         depth=depth,
         date_range=(from_date, to_date),
         runtime=runtime,
-        grounding_provider=grounding_provider,
         mock=mock,
         rate_limited_sources=rate_limited_sources,
         rate_limit_lock=rate_limit_lock,
         settings=settings,
+        web_backend=web_backend,
     )
 
     # Clear errors for sources that returned items despite partial failures.
@@ -456,11 +465,11 @@ def _retry_thin_sources(
     depth: str,
     date_range: tuple[str, str],
     runtime: schema.ProviderRuntime,
-    grounding_provider: object | None,
     mock: bool,
     rate_limited_sources: set[str],
     rate_limit_lock: threading.Lock,
     settings: dict[str, Any],
+    web_backend: str = "auto",
 ) -> None:
     """Retry sources with thin results using simplified core subject query."""
     if depth == "quick":
@@ -503,10 +512,10 @@ def _retry_thin_sources(
                 depth=depth,
                 date_range=date_range,
                 runtime=runtime,
-                grounding_provider=grounding_provider,
-                mock=mock,
+                        mock=mock,
                 rate_limited_sources=rate_limited_sources,
                 rate_limit_lock=rate_limit_lock,
+                web_backend=web_backend,
             )
             normalized = normalize.normalize_source_items(
                 source, raw_items, from_date, to_date,
@@ -540,10 +549,10 @@ def _retrieve_stream(
     depth: str,
     date_range: tuple[str, str],
     runtime: schema.ProviderRuntime,
-    grounding_provider: object | None,
     mock: bool,
     rate_limited_sources: set[str] | None = None,
     rate_limit_lock: threading.Lock | None = None,
+    web_backend: str = "auto",
 ) -> tuple[list[dict], dict]:
     # Early exit if source was rate-limited by a sibling future
     if rate_limited_sources is not None and source in rate_limited_sources:
@@ -552,16 +561,8 @@ def _retrieve_stream(
     if mock:
         return _mock_stream_results(source, subquery)
     if source == "grounding":
-        if not grounding_provider:
-            raise RuntimeError("Grounding requested but Google API key is unavailable.")
-        return grounding.grounded_search(
-            grounding_provider,
-            model=runtime.grounding_model,
-            topic=topic,
-            subquery=subquery,
-            date_range=date_range,
-            depth=depth,
-        )
+        return grounding.web_search(
+            subquery.search_query, date_range, config, backend=web_backend)
     if source == "reddit":
         result = reddit.search_and_enrich(
             subquery.search_query,
@@ -636,13 +637,6 @@ def _google_key(config: dict[str, Any]) -> str | None:
     return config.get("GOOGLE_API_KEY") or config.get("GEMINI_API_KEY") or config.get("GOOGLE_GENAI_API_KEY")
 
 
-def _grounding_provider(config: dict[str, Any], reasoning_provider: object) -> object | None:
-    if isinstance(reasoning_provider, providers.GeminiClient):
-        return reasoning_provider
-    google_key = _google_key(config)
-    if not google_key:
-        return None
-    return providers.GeminiClient(google_key)
 
 
 def _mock_stream_results(source: str, subquery: schema.SubQuery) -> tuple[list[dict], dict]:
