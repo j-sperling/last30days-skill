@@ -17,6 +17,8 @@ metadata:
         - GOOGLE_API_KEY
       optionalEnv:
         - SCRAPECREATORS_API_KEY
+        - BRAVE_API_KEY
+        - SERPER_API_KEY
         - OPENAI_API_KEY
         - XAI_API_KEY
         - BSKY_HANDLE
@@ -94,12 +96,13 @@ python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 
 ## Runtime expectations
 
-- `GOOGLE_API_KEY` is the primary credential. It enables Gemini planning, reranking, and Google Search grounding.
-- Gemini `3.1` preview is the required Gemini runtime.
+- `GOOGLE_API_KEY` enables Gemini planning and reranking. Not required if `OPENAI_API_KEY` or `XAI_API_KEY` is set.
+- `BRAVE_API_KEY` enables Brave web search (recommended). `SERPER_API_KEY` is an alternative.
 - `SCRAPECREATORS_API_KEY` enables Reddit, TikTok, and Instagram.
 - `XAI_API_KEY` enables xAI reasoning and X search.
 - `AUTH_TOKEN` plus `CT0` enables Bird-backed X search.
 - `yt-dlp` enables YouTube.
+- Planning and reranking fall back gracefully: Gemini -> OpenAI -> xAI -> deterministic/local.
 - For OpenClaw-specific watchlist, briefing, and history workflows, use `variants/open/SKILL.md`.
 
 ## Output model
@@ -124,6 +127,95 @@ Important report fields:
 - Prefer `--deep` only when the user explicitly wants maximum recall or the topic is complex enough to justify extra latency.
 - Prefer `--emit=json` when downstream code or evaluation will consume the result.
 - Use `--search=` only when the user explicitly wants source restrictions.
-- Do not describe the old source-first layout or the removed Brave / OpenRouter / Parallel web stack. Those are not part of v3.
-- **For YouTube:** Quote transcript highlights directly in synthesis. These are pre-extracted key moments from the video -- treat them like Reddit top comments. Attribute to the channel name.
-- **For Reddit:** Pay special attention to top comments. When a top comment has high upvotes, quote it directly in synthesis.
+
+## X handle resolution
+
+If the topic could have its own X/Twitter account (people, brands, products, companies), do a quick WebSearch for their handle:
+```
+WebSearch("{TOPIC} X twitter handle site:x.com")
+```
+If you find a verified handle, pass `--x-handle={handle}` (without @). This searches their posts directly, finding content they posted that doesn't mention their own name. Skip this for generic concepts ("best headphones 2026", "how to use Docker").
+
+## Synthesis guidance
+
+### Ground in actual research, not pre-existing knowledge
+
+Read the output carefully. Use exact product/tool names from the research, specific quotes, and what sources actually say. Do not conflate similar-sounding products or substitute your knowledge for what the research found.
+
+### Per-source synthesis rules
+
+- **Reddit:** Top comments often contain the best insights. When a top comment has high upvotes, quote it directly. Reddit's value is in the comments, not the post titles.
+- **YouTube:** Quote transcript highlights directly -- they are pre-extracted key moments. Attribute to the channel name. YouTube's value is in what creators SAY, not just view counts.
+- **X/Twitter:** Quote @handles with high engagement. These prove real-time community signal.
+- **TikTok/Instagram:** Cite @creators with engagement context (views, likes). Viral signal.
+- **Hacker News:** Technical community perspective. Cite as "per HN."
+- **Polymarket:** Prediction market odds are among the highest-signal data. Real money on outcomes cuts through opinion. Always include specific odds AND movement: "Polymarket has X at Y% (up Z% this month)."
+- **Web (Brave/Serper):** Lower weight than social sources (no engagement data). Only cite when social sources don't cover a fact.
+- **Cross-cluster signals:** When the same evidence appears across multiple clusters or sources, lead with it -- cross-platform corroboration is the strongest signal.
+
+### Polymarket interpretation
+
+When Polymarket returns relevant markets:
+1. Prefer structural/long-term markets over near-term deadlines (championship odds > regular season, IPO > incremental update)
+2. Call out the specific outcome's odds and movement, not just that a market exists
+3. Weave odds into the narrative as supporting evidence, don't isolate them
+4. When multiple relevant markets exist, highlight 3-5 ordered by importance
+
+### Citation rules
+
+Cite sources sparingly to prove research is real:
+- In synthesis: cite 1-2 top sources per point, short format: "per @handle" or "per r/subreddit"
+- Do not include engagement metrics in citations (save those for stats)
+- Do not chain multiple citations: "per @x, @y, @z" is too much -- pick the strongest one
+- Never paste raw URLs in synthesis text
+
+Citation priority (most to least preferred):
+1. @handles from X
+2. r/subreddits from Reddit (prefer quoting top comments)
+3. YouTube channels (transcript-backed)
+4. TikTok/Instagram creators (viral signal)
+5. HN discussions
+6. Polymarket (with specific odds)
+7. Web sources (only when social sources don't cover the fact)
+
+The tool's value is surfacing what PEOPLE are saying, not what journalists wrote.
+
+### Comparison queries
+
+For "X vs Y" queries, structure output as:
+- Quick Verdict (1-2 sentences, data-driven)
+- Per-entity: community sentiment, strengths, weaknesses with source attribution
+- Head-to-Head table with key dimensions
+- Bottom Line: "Choose X if... Choose Y if..." based on community data
+
+### Recommendation queries
+
+When users ask "best X" or "top X", extract SPECIFIC NAMES from the research:
+- Count how many times each is mentioned across sources
+- Note which sources recommend each
+- List by popularity/mention count with source attribution
+
+### Follow-up conversations
+
+After research completes, treat yourself as an expert on this topic:
+- Answer follow-ups from the research findings, not new searches
+- Cite the specific Reddit threads, X posts, and YouTube channels you found
+- Only do new research if the user explicitly asks about a DIFFERENT topic
+
+## Security and permissions
+
+**What this skill does:**
+- Sends search queries to ScrapeCreators API for Reddit, TikTok, Instagram search
+- Sends search queries via xAI API or Bird client for X search
+- Sends search queries to Algolia HN Search API (free, no auth)
+- Sends search queries to Polymarket Gamma API (free, no auth)
+- Runs yt-dlp locally for YouTube search and transcript extraction (no API key)
+- Sends search queries to Brave Search API or Serper for web search (optional)
+- Uses Gemini, OpenAI, or xAI for LLM planning and reranking
+- Stores findings in local SQLite database (--store mode only)
+
+**What this skill does NOT do:**
+- Does not post, like, or modify content on any platform
+- Does not access your personal accounts on any platform
+- Does not share API keys between providers
+- Does not log or cache API keys in output files
