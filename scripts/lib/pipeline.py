@@ -538,8 +538,8 @@ def _retry_thin_sources(
                 primary_label = plan.subqueries[0].label if plan.subqueries else "primary"
                 existing = bundle.items_by_source_and_query.get((primary_label, source), [])
                 bundle.items_by_source_and_query[(primary_label, source)] = existing + new_items
-        except Exception:
-            pass  # Don't add errors for retry failures
+        except Exception as exc:
+            print(f"[Pipeline] Retry failed for {source}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 def _retrieve_stream(
@@ -671,15 +671,14 @@ def _mock_stream_results(source: str, subquery: schema.SubQuery) -> tuple[list[d
         ],
         "grounding": [
             {
-                "id": "WG1",
+                "id": "WB1",
                 "title": f"{subquery.search_query} article",
                 "url": "https://example.com/article",
                 "source_domain": "example.com",
                 "snippet": f"Recent web reporting about {subquery.search_query}.",
                 "date": dates.get_date_range(7)[0],
                 "relevance": 0.88,
-                "why_relevant": "Mock grounded web result",
-                "metadata": {"searchEntryPoint": {"renderedContent": "mock"}},
+                "why_relevant": "Brave web search",
             }
         ],
     }
@@ -687,9 +686,7 @@ def _mock_stream_results(source: str, subquery: schema.SubQuery) -> tuple[list[d
         return payloads.get(source, []), {
             "label": subquery.label,
             "mock": True,
-            "answerText": f"Mock grounded answer for {subquery.search_query}.",
             "webSearchQueries": [subquery.search_query],
-            "groundingChunks": [],
-            "groundingSupports": [],
+            "resultCount": 1,
         }
     return payloads.get(source, []), {}

@@ -33,8 +33,7 @@ metadata:
     tags:
       - research
       - recency
-      - grounding
-      - gemini
+      - web-search
       - multi-source
       - analysis
 ---

@@ -98,6 +98,22 @@ class WebSearchDispatchTests(unittest.TestCase):
         items, artifact = grounding.web_search("test", ("2026-02-25", "2026-03-27"), config, backend="none")
         self.assertEqual([], items)
 
+    def test_auto_prefers_brave_when_both_keys_present(self):
+        config = {"BRAVE_API_KEY": "brave-key", "SERPER_API_KEY": "serper-key"}
+        with patch("lib.grounding.brave_search", return_value=([], {})) as mock_brave, \
+             patch("lib.grounding.serper_search", return_value=([], {})) as mock_serper:
+            grounding.web_search("test", ("2026-02-25", "2026-03-27"), config, backend="auto")
+            mock_brave.assert_called_once()
+            mock_serper.assert_not_called()
+
+    def test_explicit_brave_without_key_raises(self):
+        with self.assertRaises(RuntimeError):
+            grounding.web_search("test", ("2026-02-25", "2026-03-27"), {}, backend="brave")
+
+    def test_unsupported_backend_raises(self):
+        with self.assertRaises(ValueError):
+            grounding.web_search("test", ("2026-02-25", "2026-03-27"), {}, backend="google")
+
 
 if __name__ == "__main__":
     unittest.main()

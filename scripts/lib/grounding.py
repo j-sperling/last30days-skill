@@ -57,7 +57,11 @@ def serper_search(
     data = http.request(
         "POST", "https://google.serper.dev/search",
         headers={"X-API-KEY": api_key},
-        json_data={"q": query, "num": count},
+        json_data={
+            "q": query,
+            "num": count,
+            "tbs": f"cdr:1,cd_min:{_serper_date_param(date_range[0])},cd_max:{_serper_date_param(date_range[1])}",
+        },
         timeout=15,
     )
     items = []
@@ -113,9 +117,17 @@ def web_search(
         else:
             return [], {}
     if backend == "brave":
-        return brave_search(query, date_range, config.get("BRAVE_API_KEY", ""))
+        key = config.get("BRAVE_API_KEY")
+        if not key:
+            raise RuntimeError("BRAVE_API_KEY is required when web_backend='brave'")
+        return brave_search(query, date_range, key)
     if backend == "serper":
-        return serper_search(query, date_range, config.get("SERPER_API_KEY", ""))
+        key = config.get("SERPER_API_KEY")
+        if not key:
+            raise RuntimeError("SERPER_API_KEY is required when web_backend='serper'")
+        return serper_search(query, date_range, key)
+    if backend != "none":
+        raise ValueError(f"Unsupported web backend: {backend!r}")
     return [], {}
 
 
@@ -130,6 +142,12 @@ def _normalize_date(value: object) -> str | None:
     if not parsed:
         return None
     return parsed.date().isoformat()
+
+
+def _serper_date_param(iso_date: str) -> str:
+    """Convert YYYY-MM-DD to MM/DD/YYYY for Serper tbs parameter."""
+    parts = iso_date.split("-")
+    return f"{parts[1]}/{parts[2]}/{parts[0]}"
 
 
 def _in_date_range(pub_date: str | None, date_range: tuple[str, str]) -> bool:
