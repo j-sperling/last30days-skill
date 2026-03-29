@@ -36,10 +36,34 @@ class ProvidersV3Tests(unittest.TestCase):
         )
         self.assertEqual("xai", runtime.reasoning_provider)
 
-    def test_no_provider_raises(self):
+    def test_auto_returns_local_runtime_when_no_keys(self):
+        runtime, client = providers.resolve_runtime(
+            {"LAST30DAYS_REASONING_PROVIDER": "auto"},
+            depth="default",
+        )
+        self.assertEqual("local", runtime.reasoning_provider)
+        self.assertEqual("deterministic", runtime.planner_model)
+        self.assertEqual("local-score", runtime.rerank_model)
+        self.assertIsNone(client)
+
+    def test_explicit_gemini_without_key_still_raises(self):
         with self.assertRaises(RuntimeError):
             providers.resolve_runtime(
-                {"LAST30DAYS_REASONING_PROVIDER": "auto"},
+                {"LAST30DAYS_REASONING_PROVIDER": "gemini"},
+                depth="default",
+            )
+
+    def test_explicit_openai_without_key_still_raises(self):
+        with self.assertRaises(RuntimeError):
+            providers.resolve_runtime(
+                {"LAST30DAYS_REASONING_PROVIDER": "openai"},
+                depth="default",
+            )
+
+    def test_explicit_xai_without_key_still_raises(self):
+        with self.assertRaises(RuntimeError):
+            providers.resolve_runtime(
+                {"LAST30DAYS_REASONING_PROVIDER": "xai"},
                 depth="default",
             )
 

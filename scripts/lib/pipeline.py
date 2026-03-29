@@ -103,14 +103,26 @@ def available_sources(config: dict[str, Any], requested_sources: list[str] | Non
 def diagnose(config: dict[str, Any], requested_sources: list[str] | None = None) -> dict[str, Any]:
     requested_sources = normalize_requested_sources(requested_sources)
     google_key = _google_key(config)
+    x_status = env.get_x_source_status(config)
+    native_web_backend = None
+    if config.get("BRAVE_API_KEY"):
+        native_web_backend = "brave"
+    elif config.get("SERPER_API_KEY"):
+        native_web_backend = "serper"
+    providers_status = {
+        "google": bool(google_key),
+        "openai": bool(config.get("OPENAI_API_KEY")) and config.get("OPENAI_AUTH_STATUS") == env.AUTH_STATUS_OK,
+        "xai": bool(config.get("XAI_API_KEY")),
+    }
     return {
-        "providers": {
-            "google": bool(google_key),
-            "openai": bool(config.get("OPENAI_API_KEY")) and config.get("OPENAI_AUTH_STATUS") == env.AUTH_STATUS_OK,
-            "xai": bool(config.get("XAI_API_KEY")),
-        },
+        "providers": providers_status,
+        "local_mode": not any(providers_status.values()),
         "reasoning_provider": (config.get("LAST30DAYS_REASONING_PROVIDER") or "auto").lower(),
-        "x_backend": env.get_x_source(config),
+        "x_backend": x_status["source"],
+        "bird_installed": x_status["bird_installed"],
+        "bird_authenticated": x_status["bird_authenticated"],
+        "bird_username": x_status["bird_username"],
+        "native_web_backend": native_web_backend,
         "available_sources": available_sources(config, requested_sources),
     }
 

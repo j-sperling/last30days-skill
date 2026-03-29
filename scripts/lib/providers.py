@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from typing import Any
@@ -229,7 +228,7 @@ def mock_runtime(config: dict[str, Any], depth: str) -> schema.ProviderRuntime:
     )
 
 
-def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.ProviderRuntime, ReasoningClient]:
+def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.ProviderRuntime, ReasoningClient | None]:
     """Resolve the reasoning provider and pinned models."""
     provider_name = (config.get("LAST30DAYS_REASONING_PROVIDER") or "auto").lower()
     google_key = config.get("GOOGLE_API_KEY") or config.get("GEMINI_API_KEY") or config.get("GOOGLE_GENAI_API_KEY")
@@ -244,7 +243,12 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
         elif xai_key:
             provider_name = "xai"
         else:
-            raise RuntimeError("No reasoning provider configured. Set GOOGLE_API_KEY, OpenAI auth, or XAI_API_KEY.")
+            return schema.ProviderRuntime(
+                reasoning_provider="local",
+                planner_model="deterministic",
+                rerank_model="local-score",
+                x_search_backend=_resolve_x_backend(config),
+            ), None
 
     planner_model, rerank_model = _resolve_model_pins(config, depth, provider_name)
 

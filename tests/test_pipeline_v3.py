@@ -2,7 +2,7 @@ import sys
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -685,6 +685,32 @@ class TestWarnings(unittest.TestCase):
     def test_no_items_warning(self):
         w = pipeline._warnings({}, [], {})
         self.assertTrue(any("No source returned" in msg for msg in w))
+
+
+class TestZeroKeyPipelineRun(unittest.TestCase):
+    """Pipeline should complete with local fallbacks when no reasoning keys are configured."""
+
+    @patch("lib.pipeline._retrieve_stream")
+    def test_zero_key_run_produces_report(self, mock_retrieve):
+        mock_retrieve.side_effect = lambda **kwargs: pipeline._mock_stream_results(
+            kwargs["source"], kwargs["subquery"]
+        )
+        config = {"LAST30DAYS_REASONING_PROVIDER": "auto"}
+        report = pipeline.run(
+            topic="test zero key topic",
+            config=config,
+            depth="quick",
+            requested_sources=["hackernews"],
+        )
+        self.assertEqual("test zero key topic", report.topic)
+        self.assertEqual("local", report.provider_runtime.reasoning_provider)
+        self.assertEqual("deterministic", report.provider_runtime.planner_model)
+        self.assertTrue(
+            any("fallback" in note for note in report.query_plan.notes),
+            f"Expected fallback plan, got notes: {report.query_plan.notes}",
+        )
+        for candidate in report.ranked_candidates:
+            self.assertEqual("fallback-local-score", candidate.explanation)
 
 
 if __name__ == "__main__":
