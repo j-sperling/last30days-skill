@@ -172,7 +172,7 @@ def discover_subreddits(
 
     scores = Counter()
     for post in results:
-        sub = post.get("subreddit", "")
+        sub = _extract_subreddit_name(post.get("subreddit", ""))
         if not sub:
             continue
 
@@ -189,7 +189,7 @@ def discover_subreddits(
             base *= 0.3
 
         # Bonus: post engagement (high-engagement posts = better sub)
-        ups = post.get("ups") or post.get("score", 0)
+        ups = post.get("ups") or post.get("score") or post.get("votes") or 0
         if ups and ups > 100:
             base += 0.5
 
@@ -198,19 +198,72 @@ def discover_subreddits(
     return [sub for sub, _ in scores.most_common(max_subs)]
 
 
-def _parse_date(created_utc) -> Optional[str]:
-    """Convert Unix timestamp to YYYY-MM-DD."""
-    if not created_utc:
+def _parse_date(value) -> Optional[str]:
+    """Convert Unix timestamp or ISO-8601 string to YYYY-MM-DD.
+
+    Global search returns ``created_at`` as an ISO string
+    (e.g. "2018-05-03T01:09:17.620000+0000"); subreddit search returns
+    ``created_utc`` as a Unix timestamp.  Handle both.
+    """
+    if not value:
         return None
+    # ISO-8601 string (contains 'T' or '-')
+    if isinstance(value, str) and ("T" in value or "-" in value):
+        try:
+            # Strip trailing offset variations (+0000, Z) for fromisoformat
+            clean = value.replace("Z", "+00:00")
+            if clean.endswith("+0000"):
+                clean = clean[:-5] + "+00:00"
+            dt = datetime.fromisoformat(clean)
+            return dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            pass
+    # Unix timestamp (int or float or numeric string)
     try:
-        dt = datetime.fromtimestamp(float(created_utc), tz=timezone.utc)
+        dt = datetime.fromtimestamp(float(value), tz=timezone.utc)
         return dt.strftime("%Y-%m-%d")
     except (ValueError, TypeError, OSError):
         return None
 
 
+def _extract_subreddit_name(value: Any) -> str:
+    """Extract subreddit name from string or API object dict."""
+    if isinstance(value, dict):
+        return str(value.get("name") or value.get("display_name") or "").strip()
+    return str(value).strip()
+
+
+def _extract_score(post: Dict[str, Any]) -> int:
+    """Extract post score from either API schema.
+
+    Global search uses ``votes``; subreddit search uses ``ups``/``score``.
+    """
+    return post.get("ups") or post.get("score") or post.get("votes") or 0
+
+
+def _extract_date(post: Dict[str, Any]) -> Optional[str]:
+    """Extract date from either API schema.
+
+    Global search uses ``created_at`` (ISO); subreddit search uses ``created_utc`` (Unix).
+    """
+    return _parse_date(
+        post.get("created_utc") or post.get("created_at") or post.get("created_at_iso")
+    )
+
+
+def _normalize_reddit_id(raw_id: str) -> str:
+    """Strip Reddit fullname prefix (t3_) for consistent dedup."""
+    s = str(raw_id or "")
+    return s[3:] if s.startswith("t3_") else s
+
+
 def _normalize_post(post: Dict[str, Any], idx: int, source_label: str = "global", query: str = "") -> Dict[str, Any]:
-    """Normalize a ScrapeCreators Reddit post to our internal format."""
+    """Normalize a ScrapeCreators Reddit post to our internal format.
+
+    Handles both the global-search schema (``votes``, ``created_at``,
+    ``subreddit`` as dict) and the subreddit-search schema (``ups``/``score``,
+    ``created_utc``, ``subreddit`` as string).
+    """
     permalink = post.get("permalink", "")
     url = f"https://www.reddit.com{permalink}" if permalink else post.get("url", "")
 
@@ -227,13 +280,13 @@ def _normalize_post(post: Dict[str, Any], idx: int, source_label: str = "global"
 
     return {
         "id": f"R{idx}",
-        "reddit_id": post.get("id", ""),
+        "reddit_id": _normalize_reddit_id(post.get("id", "")),
         "title": title,
         "url": url,
-        "subreddit": str(post.get("subreddit", "")).strip(),
-        "date": _parse_date(post.get("created_utc")),
+        "subreddit": _extract_subreddit_name(post.get("subreddit", "")),
+        "date": _extract_date(post),
         "engagement": {
-            "score": post.get("ups") or post.get("score", 0),
+            "score": _extract_score(post),
             "num_comments": post.get("num_comments", 0),
             "upvote_ratio": post.get("upvote_ratio"),
         },
