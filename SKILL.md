@@ -149,7 +149,13 @@ python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 
 ## Web fallback for plugin hosts
 
-If native grounded web retrieval is unavailable because `BRAVE_API_KEY` and `SERPER_API_KEY` are both missing, supplement the CLI output with the host `WebSearch` tool. Use the user's exact terminology, avoid duplicate platform coverage already handled by the CLI, and fold the web findings into the final synthesis instead of dumping raw search results.
+Do not guess whether native web is available. Detect it explicitly:
+
+1. Run `python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose` when you need to decide on web fallback before the main command.
+2. Treat native grounded web as available only when `native_web_backend` is not `null` and `"grounding"` appears in `available_sources`.
+3. If you already ran the main command, the CLI banner and completion line also tell you whether `Web` was active.
+
+If native grounded web retrieval is missing by those signals, supplement the CLI output with the host `WebSearch` tool. Use the user's exact terminology, avoid duplicate platform coverage already handled by the CLI, and fold the web findings into the final synthesis instead of dumping raw search results.
 
 Recommended fallback queries:
 

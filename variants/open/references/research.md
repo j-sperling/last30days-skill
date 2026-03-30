@@ -52,7 +52,13 @@ Use these variants when the user asked for them:
 
 ## Web supplementation
 
-If native grounded web retrieval is unavailable because `BRAVE_API_KEY` and `SERPER_API_KEY` are both missing, use the host `WebSearch` tool after the CLI run and fold those results into the synthesis.
+Do not guess whether native web is available. Detect it explicitly:
+
+1. Run `python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose` before the main command when you need to decide on fallback up front.
+2. Treat native grounded web as available only when `native_web_backend` is not `null` and `"grounding"` appears in `available_sources`.
+3. If you already ran the main command, the CLI banner and completion line also tell you whether `Web` was active.
+
+If native grounded web retrieval is missing by those signals, use the host `WebSearch` tool after the CLI run and fold those results into the synthesis.
 
 Recommended queries:
 
