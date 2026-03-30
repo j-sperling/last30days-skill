@@ -1,8 +1,4 @@
-"""Terminal UI utilities for last30days skill.
-
-NOTE: This module is unused by the v3 pipeline (pipeline.py).
-Retained for potential external consumers.
-"""
+"""Terminal UI utilities for last30days skill."""
 
 import sys
 import time
@@ -116,6 +112,60 @@ WEB_ONLY_MESSAGES = [
     "Discovering tutorials...",
 ]
 
+SOURCE_COMPLETION_ORDER = [
+    "reddit",
+    "x",
+    "youtube",
+    "tiktok",
+    "instagram",
+    "hackernews",
+    "bluesky",
+    "truthsocial",
+    "polymarket",
+    "grounding",
+    "xiaohongshu",
+]
+
+SOURCE_COMPLETION_META = {
+    "reddit": ("Reddit", "thread", "threads", Colors.YELLOW),
+    "x": ("X", "post", "posts", Colors.CYAN),
+    "youtube": ("YouTube", "video", "videos", Colors.RED),
+    "tiktok": ("TikTok", "video", "videos", Colors.PURPLE),
+    "instagram": ("Instagram", "reel", "reels", Colors.PURPLE),
+    "hackernews": ("HN", "story", "stories", Colors.YELLOW),
+    "bluesky": ("Bluesky", "post", "posts", Colors.BLUE),
+    "truthsocial": ("Truth Social", "post", "posts", Colors.CYAN),
+    "polymarket": ("Polymarket", "market", "markets", Colors.GREEN),
+    "grounding": ("Web", "result", "results", Colors.GREEN),
+    "xiaohongshu": ("Xiaohongshu", "post", "posts", Colors.RED),
+}
+
+
+def _completion_sources(source_counts: dict[str, int], display_sources: list[str] | None) -> list[str]:
+    requested = list(dict.fromkeys(display_sources or []))
+    if not requested:
+        requested = [source for source, count in source_counts.items() if count]
+    if not requested and source_counts:
+        requested = list(source_counts)
+
+    candidate_set = set(requested) | set(source_counts)
+    ordered = [source for source in SOURCE_COMPLETION_ORDER if source in candidate_set]
+    for source in requested + list(source_counts):
+        if source in candidate_set and source not in ordered:
+            ordered.append(source)
+    return ordered
+
+
+def _format_completion_part(source: str, count: int, tty: bool) -> str:
+    label, singular, plural, color = SOURCE_COMPLETION_META.get(
+        source,
+        (source.replace("_", " ").title(), "result", "results", Colors.RESET),
+    )
+    unit = singular if count == 1 else plural
+    if tty:
+        return f"{color}{label}:{Colors.RESET} {count} {unit}"
+    return f"{label}: {count} {unit}"
+
 def _build_nux_message(diag: dict = None) -> str:
     """Build conversational NUX message with dynamic source status."""
     available = set((diag or {}).get("available_sources", []))
@@ -147,8 +197,8 @@ Just start with "last30" and talk to me like normal.
 
 # Shorter promo for single missing key
 PROMO_SINGLE_KEY = {
-    "reddit": "\n💡 You can unlock Reddit, TikTok, and Instagram with SCRAPECREATORS_API_KEY.\n",
-    "x": "\n💡 You can unlock X with AUTH_TOKEN/CT0 or XAI_API_KEY.\n",
+    "reddit": "\n💡 Unlock Reddit, TikTok, and Instagram with SCRAPECREATORS_API_KEY -- 100 free calls, no CC -- scrapecreators.com\n",
+    "x": "\n💡 Unlock X: log into x.com in Firefox or Safari, then re-run. Or add AUTH_TOKEN/CT0 or XAI_API_KEY.\n",
     "web": "\n💡 You can unlock native grounded web search with BRAVE_API_KEY or SERPER_API_KEY.\n",
 }
 
@@ -334,36 +384,46 @@ class ProgressDisplay:
         if self.spinner:
             self.spinner.stop()
 
-    def show_complete(self, reddit_count: int, x_count: int, youtube_count: int = 0, hn_count: int = 0, pm_count: int = 0, tiktok_count: int = 0, ig_count: int = 0):
+    def show_complete(
+        self,
+        reddit_count: int = 0,
+        x_count: int = 0,
+        youtube_count: int = 0,
+        hn_count: int = 0,
+        pm_count: int = 0,
+        tiktok_count: int = 0,
+        ig_count: int = 0,
+        *,
+        source_counts: dict[str, int] | None = None,
+        display_sources: list[str] | None = None,
+    ):
         elapsed = time.time() - self.start_time
+        if source_counts is None:
+            source_counts = {
+                "reddit": reddit_count,
+                "x": x_count,
+                "youtube": youtube_count,
+                "tiktok": tiktok_count,
+                "instagram": ig_count,
+                "hackernews": hn_count,
+                "polymarket": pm_count,
+            }
+            if display_sources is None:
+                display_sources = [source for source, count in source_counts.items() if count]
+                if not display_sources:
+                    display_sources = ["reddit", "x"]
+
+        ordered_sources = _completion_sources(source_counts, display_sources)
+        parts = [
+            _format_completion_part(source, source_counts.get(source, 0), tty=IS_TTY)
+            for source in ordered_sources
+        ]
         if IS_TTY:
             sys.stderr.write(f"\n{Colors.GREEN}{Colors.BOLD}✓ Research complete{Colors.RESET} ")
             sys.stderr.write(f"{Colors.DIM}({elapsed:.1f}s){Colors.RESET}\n")
-            sys.stderr.write(f"  {Colors.YELLOW}Reddit:{Colors.RESET} {reddit_count} threads  ")
-            sys.stderr.write(f"{Colors.CYAN}X:{Colors.RESET} {x_count} posts")
-            if youtube_count:
-                sys.stderr.write(f"  {Colors.RED}YouTube:{Colors.RESET} {youtube_count} videos")
-            if tiktok_count:
-                sys.stderr.write(f"  {Colors.PURPLE}TikTok:{Colors.RESET} {tiktok_count} videos")
-            if ig_count:
-                sys.stderr.write(f"  {Colors.PURPLE}Instagram:{Colors.RESET} {ig_count} reels")
-            if hn_count:
-                sys.stderr.write(f"  {Colors.YELLOW}HN:{Colors.RESET} {hn_count} stories")
-            if pm_count:
-                sys.stderr.write(f"  {Colors.GREEN}Polymarket:{Colors.RESET} {pm_count} markets")
+            sys.stderr.write("  " + "  ".join(parts))
             sys.stderr.write("\n\n")
         else:
-            parts = [f"Reddit: {reddit_count} threads", f"X: {x_count} posts"]
-            if youtube_count:
-                parts.append(f"YouTube: {youtube_count} videos")
-            if tiktok_count:
-                parts.append(f"TikTok: {tiktok_count} videos")
-            if ig_count:
-                parts.append(f"Instagram: {ig_count} reels")
-            if hn_count:
-                parts.append(f"HN: {hn_count} stories")
-            if pm_count:
-                parts.append(f"Polymarket: {pm_count} markets")
             sys.stderr.write(f"✓ Research complete ({elapsed:.1f}s) - {', '.join(parts)}\n")
         sys.stderr.flush()
 

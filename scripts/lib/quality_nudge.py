@@ -159,8 +159,8 @@ def _build_nudge_text(core_missing: List[str], core_errored: List[str]) -> str:
             )
         else:
             free_suggestions.append(
-                "X/Twitter: scan browser cookies automatically — "
-                "just log into x.com in any browser and re-run."
+                "X/Twitter: log into x.com in Firefox or Safari, then re-run. "
+                "Add FROM_BROWSER=auto to also check Chrome."
             )
 
     if "youtube" in core_missing:

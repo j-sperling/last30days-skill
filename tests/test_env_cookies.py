@@ -35,7 +35,8 @@ class TestExtractBrowserCredentials:
         result = extract_browser_credentials(config)
         assert result["AUTH_TOKEN"] == "tok123"
         assert result["CT0"] == "ct0val"
-        mock_extract.assert_any_call("auto", ".x.com", ["auth_token", "ct0"])
+        # auto mode tries firefox first, then safari, then chrome
+        mock_extract.assert_any_call("firefox", ".x.com", ["auth_token", "ct0"])
 
     @patch("lib.cookie_extract.extract_cookies")
     def test_explicit_auth_token_skips_x_extraction(self, mock_extract):
@@ -58,11 +59,17 @@ class TestExtractBrowserCredentials:
         mock_extract.assert_not_called()
 
     @patch("lib.cookie_extract.extract_cookies")
-    def test_no_from_browser_defaults_off(self, mock_extract):
+    def test_no_from_browser_defaults_to_silent(self, mock_extract):
+        """Default (no FROM_BROWSER): tries Firefox and Safari only, skips Chrome."""
+        mock_extract.return_value = None
         config = _base_config()
         result = extract_browser_credentials(config)
         assert result == {}
-        mock_extract.assert_not_called()
+        # Should try firefox and safari but NOT chrome
+        browser_args = [call[0][0] for call in mock_extract.call_args_list]
+        assert "firefox" in browser_args
+        assert "safari" in browser_args
+        assert "chrome" not in browser_args
 
     @patch("lib.cookie_extract.extract_cookies")
     def test_from_browser_firefox_only(self, mock_extract):

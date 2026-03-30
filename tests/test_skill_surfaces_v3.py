@@ -115,6 +115,9 @@ class SkillSurfaceV3Tests(unittest.TestCase):
         self.assertIn('TARGET_TOOL or "unknown"', root_skill)
         self.assertIn("Research typically takes 2-8 minutes. Starting now.", root_skill)
         self.assertIn("## Web fallback for plugin hosts", root_skill)
+        self.assertIn('python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose', root_skill)
+        self.assertIn("native_web_backend", root_skill)
+        self.assertIn('`"grounding"` appears in `available_sources`', root_skill)
         self.assertIn("copy-paste-ready prompt", root_skill)
         self.assertIn("## Display contract", root_skill)
 
@@ -126,11 +129,17 @@ class SkillSurfaceV3Tests(unittest.TestCase):
         self.assertIn("Parsed intent:", research_ref)
         self.assertIn('WebSearch("{TOPIC} X twitter handle site:x.com")', research_ref)
         self.assertIn('--emit=compact --store', research_ref)
-        self.assertIn("If native grounded web retrieval is unavailable", research_ref)
+        self.assertIn('python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose', research_ref)
+        self.assertIn("native_web_backend", research_ref)
+        self.assertIn('`"grounding"` appears in `available_sources`', research_ref)
         self.assertIn("What I learned", research_ref)
         self.assertIn("Stats", research_ref)
         self.assertIn("AskUserQuestion", research_ref)
         self.assertIn("stay in expert mode", research_ref)
+
+    def test_search_quality_artifacts_are_ignored_and_untracked(self):
+        gitignore = (REPO_ROOT / ".gitignore").read_text()
+        self.assertIn("tmp/search-quality*/", gitignore)
 
 
 if __name__ == "__main__":
