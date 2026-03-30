@@ -274,6 +274,7 @@ def get_config() -> dict[str, Any]:
         ('BRAVE_API_KEY', None),
         ('EXA_API_KEY', None),
         ('SERPER_API_KEY', None),
+        ('FROM_BROWSER', None),
     ]
 
     for key, default in keys:
@@ -287,7 +288,64 @@ def get_config() -> dict[str, Any]:
     else:
         config['_CONFIG_SOURCE'] = 'env_only'
 
+    # Extract browser credentials if configured
+    browser_creds = extract_browser_credentials(config)
+    for key, value in browser_creds.items():
+        if not config.get(key):
+            config[key] = value
+            config[f"_{key}_SOURCE"] = "browser"
+
     return config
+
+
+# ---------------------------------------------------------------------------
+# Browser cookie extraction
+# ---------------------------------------------------------------------------
+
+COOKIE_DOMAINS: dict[str, dict[str, Any]] = {
+    "x": {
+        "domain": ".x.com",
+        "cookies": ["auth_token", "ct0"],
+        "mapping": {"auth_token": "AUTH_TOKEN", "ct0": "CT0"},
+    },
+    "truthsocial": {
+        "domain": ".truthsocial.com",
+        "cookies": ["_session_id"],
+        "mapping": {"_session_id": "TRUTHSOCIAL_TOKEN"},
+    },
+}
+
+
+def extract_browser_credentials(config: dict[str, Any]) -> dict[str, str]:
+    """Extract auth cookies from local browsers when FROM_BROWSER is set."""
+    from_browser = config.get("FROM_BROWSER")
+    if not from_browser or from_browser == "off":
+        return {}
+    try:
+        from . import cookie_extract
+    except ImportError:
+        return {}
+    extracted: dict[str, str] = {}
+    for _service, spec in COOKIE_DOMAINS.items():
+        if all(config.get(env_key) for env_key in spec["mapping"].values()):
+            continue
+        browser = None if from_browser == "auto" else from_browser
+        cookies = cookie_extract.extract_cookies(browser, spec["domain"], spec["cookies"])
+        if cookies:
+            for cookie_name, env_key in spec["mapping"].items():
+                if cookie_name in cookies and not config.get(env_key):
+                    extracted[env_key] = cookies[cookie_name]
+    return extracted
+
+
+def get_x_source_with_method(config: dict[str, Any]) -> tuple[str | None, str]:
+    """Return (source, method) for X search, where method describes the auth origin."""
+    if config.get("XAI_API_KEY"):
+        return "xai", "xai"
+    if config.get("AUTH_TOKEN") and config.get("CT0"):
+        method = config.get("_AUTH_TOKEN_SOURCE", "env")
+        return "bird", method
+    return None, "none"
 
 
 def config_exists() -> bool:
