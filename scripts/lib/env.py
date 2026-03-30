@@ -275,6 +275,7 @@ def get_config() -> dict[str, Any]:
         ('EXA_API_KEY', None),
         ('SERPER_API_KEY', None),
         ('FROM_BROWSER', None),
+        ('SETUP_COMPLETE', None),
     ]
 
     for key, default in keys:
@@ -329,8 +330,11 @@ def extract_browser_credentials(config: dict[str, Any]) -> dict[str, str]:
     for _service, spec in COOKIE_DOMAINS.items():
         if all(config.get(env_key) for env_key in spec["mapping"].values()):
             continue
-        browser = None if from_browser == "auto" else from_browser
-        cookies = cookie_extract.extract_cookies(browser, spec["domain"], spec["cookies"])
+        browser = "auto" if from_browser == "auto" else from_browser
+        try:
+            cookies = cookie_extract.extract_cookies(browser, spec["domain"], spec["cookies"])
+        except Exception:
+            continue
         if cookies:
             for cookie_name, env_key in spec["mapping"].items():
                 if cookie_name in cookies and not config.get(env_key):

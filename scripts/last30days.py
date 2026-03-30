@@ -169,6 +169,22 @@ def main() -> int:
         os.environ["LAST30DAYS_DEBUG"] = "1"
 
     config = env.get_config()
+
+    # Handle setup subcommand
+    topic = " ".join(args.topic).strip()
+    if topic.lower() == "setup":
+        from lib import setup_wizard
+        sys.stderr.write("Running auto-setup...\n")
+        results = setup_wizard.run_auto_setup(config)
+        from_browser = "auto"
+        if results.get("cookies_found"):
+            first_browser = next(iter(results["cookies_found"].values()))
+            from_browser = first_browser
+        setup_wizard.write_setup_config(env.CONFIG_FILE, from_browser=from_browser)
+        results["env_written"] = True
+        sys.stderr.write(setup_wizard.get_setup_status_text(results) + "\n")
+        return 0
+
     requested_sources = parse_search_flag(args.search) if args.search else None
     diag = pipeline.diagnose(config, requested_sources)
 
@@ -176,7 +192,6 @@ def main() -> int:
         print(json.dumps(diag, indent=2, sort_keys=True))
         return 0
 
-    topic = " ".join(args.topic).strip()
     if not topic:
         parser.print_usage(sys.stderr)
         return 2
