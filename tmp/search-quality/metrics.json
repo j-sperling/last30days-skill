@@ -1,0 +1,468 @@
+{
+  "generated_at": "2026-03-18T15:29:51",
+  "baseline": "upstream/main",
+  "candidate": "WORKTREE",
+  "topics": [
+    {
+      "topic": "OpenClaw vs NanoClaw vs ZeroClaw",
+      "query_type": "comparison",
+      "baseline": {
+        "precision_at_5": 0.6,
+        "ndcg_at_5": 0.3666846833642825,
+        "source_coverage_recall": 0.6
+      },
+      "candidate": {
+        "precision_at_5": 0.4,
+        "ndcg_at_5": 0.2247491714770747,
+        "source_coverage_recall": 1.0
+      },
+      "stability": {
+        "overall_jaccard": 0.14285714285714285,
+        "overall_retention_vs_baseline": 0.25,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "hackernews": {
+            "baseline_count": 3,
+            "candidate_count": 4,
+            "jaccard": 0.75,
+            "retention_vs_baseline": 1.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "reddit": {
+            "baseline_count": 1,
+            "candidate_count": 3,
+            "jaccard": 0.3333333333333333,
+            "retention_vs_baseline": 1.0
+          },
+          "tiktok": {
+            "baseline_count": 0,
+            "candidate_count": 4,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "x": {
+            "baseline_count": 13,
+            "candidate_count": 3,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "youtube": {
+            "baseline_count": 3,
+            "candidate_count": 2,
+            "jaccard": 0.25,
+            "retention_vs_baseline": 0.3333333333333333
+          }
+        }
+      }
+    },
+    {
+      "topic": "how to set up a GLP-1 supplement routine",
+      "query_type": "how_to",
+      "baseline": {
+        "precision_at_5": 0.0,
+        "ndcg_at_5": 0.0899071706608175,
+        "source_coverage_recall": 0.25
+      },
+      "candidate": {
+        "precision_at_5": 0.6,
+        "ndcg_at_5": 0.43180135366264794,
+        "source_coverage_recall": 0.75
+      },
+      "stability": {
+        "overall_jaccard": 0.0,
+        "overall_retention_vs_baseline": 0.0,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 4,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 4,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "reddit": {
+            "baseline_count": 3,
+            "candidate_count": 1,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "tiktok": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "x": {
+            "baseline_count": 1,
+            "candidate_count": 9,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "youtube": {
+            "baseline_count": 4,
+            "candidate_count": 0,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          }
+        }
+      }
+    },
+    {
+      "topic": "2026 March Madness",
+      "query_type": "breaking_news",
+      "baseline": {
+        "precision_at_5": 0.8,
+        "ndcg_at_5": 0.394112463334442,
+        "source_coverage_recall": 0.3333333333333333
+      },
+      "candidate": {
+        "precision_at_5": 1.0,
+        "ndcg_at_5": 0.5092595013431674,
+        "source_coverage_recall": 0.8333333333333334
+      },
+      "stability": {
+        "overall_jaccard": 0.08108108108108109,
+        "overall_retention_vs_baseline": 0.15,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "hackernews": {
+            "baseline_count": 1,
+            "candidate_count": 0,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 5,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "reddit": {
+            "baseline_count": 8,
+            "candidate_count": 0,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "tiktok": {
+            "baseline_count": 0,
+            "candidate_count": 5,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "x": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "youtube": {
+            "baseline_count": 11,
+            "candidate_count": 6,
+            "jaccard": 0.21428571428571427,
+            "retention_vs_baseline": 0.2727272727272727
+          }
+        }
+      }
+    },
+    {
+      "topic": "best budget noise cancelling headphones 2026",
+      "query_type": "product",
+      "baseline": {
+        "precision_at_5": 1.0,
+        "ndcg_at_5": 0.6084417613470554,
+        "source_coverage_recall": 0.5
+      },
+      "candidate": {
+        "precision_at_5": 0.8,
+        "ndcg_at_5": 0.6669038850452897,
+        "source_coverage_recall": 1.0
+      },
+      "stability": {
+        "overall_jaccard": 0.17647058823529413,
+        "overall_retention_vs_baseline": 0.3,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 4,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "reddit": {
+            "baseline_count": 14,
+            "candidate_count": 5,
+            "jaccard": 0.26666666666666666,
+            "retention_vs_baseline": 0.2857142857142857
+          },
+          "tiktok": {
+            "baseline_count": 0,
+            "candidate_count": 6,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "x": {
+            "baseline_count": 1,
+            "candidate_count": 1,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "youtube": {
+            "baseline_count": 5,
+            "candidate_count": 2,
+            "jaccard": 0.4,
+            "retention_vs_baseline": 0.4
+          }
+        }
+      }
+    },
+    {
+      "topic": "thoughts on OpenAI Codex pricing",
+      "query_type": "opinion",
+      "baseline": {
+        "precision_at_5": 0.4,
+        "ndcg_at_5": 0.32428869727958803,
+        "source_coverage_recall": 0.75
+      },
+      "candidate": {
+        "precision_at_5": 0.4,
+        "ndcg_at_5": 0.5782287125251628,
+        "source_coverage_recall": 1.0
+      },
+      "stability": {
+        "overall_jaccard": 0.0,
+        "overall_retention_vs_baseline": 0.0,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 7,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "polymarket": {
+            "baseline_count": 0,
+            "candidate_count": 3,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "tiktok": {
+            "baseline_count": 2,
+            "candidate_count": 5,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "x": {
+            "baseline_count": 15,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "youtube": {
+            "baseline_count": 3,
+            "candidate_count": 1,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          }
+        }
+      }
+    },
+    {
+      "topic": "odds of US recession 2026",
+      "query_type": "prediction",
+      "baseline": {
+        "precision_at_5": 1.0,
+        "ndcg_at_5": 0.7446551257189392,
+        "source_coverage_recall": 0.25
+      },
+      "candidate": {
+        "precision_at_5": 0.4,
+        "ndcg_at_5": 0.4704790940677063,
+        "source_coverage_recall": 1.0
+      },
+      "stability": {
+        "overall_jaccard": 0.02564102564102564,
+        "overall_retention_vs_baseline": 0.05,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 6,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "polymarket": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "tiktok": {
+            "baseline_count": 0,
+            "candidate_count": 8,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "x": {
+            "baseline_count": 20,
+            "candidate_count": 2,
+            "jaccard": 0.047619047619047616,
+            "retention_vs_baseline": 0.05
+          }
+        }
+      }
+    },
+    {
+      "topic": "what is retrieval augmented generation",
+      "query_type": "concept",
+      "baseline": {
+        "precision_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "source_coverage_recall": 0.6
+      },
+      "candidate": {
+        "precision_at_5": 0.4,
+        "ndcg_at_5": 0.5181822849033655,
+        "source_coverage_recall": 1.0
+      },
+      "stability": {
+        "overall_jaccard": 0.05263157894736842,
+        "overall_retention_vs_baseline": 0.1,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 3,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 3,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "reddit": {
+            "baseline_count": 2,
+            "candidate_count": 2,
+            "jaccard": 0.3333333333333333,
+            "retention_vs_baseline": 0.5
+          },
+          "tiktok": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "x": {
+            "baseline_count": 17,
+            "candidate_count": 9,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "youtube": {
+            "baseline_count": 1,
+            "candidate_count": 1,
+            "jaccard": 1.0,
+            "retention_vs_baseline": 1.0
+          }
+        }
+      }
+    },
+    {
+      "topic": "Google Wiz acquisition price and timeline",
+      "query_type": "factual",
+      "baseline": {
+        "precision_at_5": 0.8,
+        "ndcg_at_5": 0.6283717105436262,
+        "source_coverage_recall": 0.6666666666666666
+      },
+      "candidate": {
+        "precision_at_5": 0.6,
+        "ndcg_at_5": 0.8347099844293421,
+        "source_coverage_recall": 1.0
+      },
+      "stability": {
+        "overall_jaccard": 0.25,
+        "overall_retention_vs_baseline": 0.4,
+        "per_source": {
+          "grounding": {
+            "baseline_count": 0,
+            "candidate_count": 2,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "hackernews": {
+            "baseline_count": 0,
+            "candidate_count": 1,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "instagram": {
+            "baseline_count": 0,
+            "candidate_count": 3,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 1.0
+          },
+          "reddit": {
+            "baseline_count": 9,
+            "candidate_count": 9,
+            "jaccard": 0.5,
+            "retention_vs_baseline": 0.6666666666666666
+          },
+          "tiktok": {
+            "baseline_count": 1,
+            "candidate_count": 1,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "x": {
+            "baseline_count": 8,
+            "candidate_count": 1,
+            "jaccard": 0.0,
+            "retention_vs_baseline": 0.0
+          },
+          "youtube": {
+            "baseline_count": 2,
+            "candidate_count": 3,
+            "jaccard": 0.6666666666666666,
+            "retention_vs_baseline": 1.0
+          }
+        }
+      }
+    }
+  ],
+  "failures": []
+}
