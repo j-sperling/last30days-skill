@@ -3,7 +3,7 @@ name: last30days
 version: "3.0.0"
 description: "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web."
 argument-hint: "last30days codex vs claude code"
-allowed-tools: Bash, Read, Write, WebSearch
+allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch
 homepage: https://github.com/mvanhorn/last30days-skill
 repository: https://github.com/mvanhorn/last30days-skill
 author: mvanhorn
@@ -70,6 +70,31 @@ The runtime is a single v3 pipeline:
 7. cluster evidence
 8. render ranked clusters
 
+## Interactive UX contract
+
+Before calling any tools, parse the user's request into:
+
+- `TOPIC`
+- `TARGET_TOOL` if they named one
+- `QUERY_TYPE`: `PROMPTING`, `RECOMMENDATIONS`, `NEWS`, `COMPARISON`, or `GENERAL`
+
+Always show the user a short pre-flight message before the first tool call:
+
+```text
+I'll research {TOPIC} across recent social, market, and web sources from the last 30 days.
+
+Parsed intent:
+- TOPIC = {TOPIC}
+- TARGET_TOOL = {TARGET_TOOL or "unknown"}
+- QUERY_TYPE = {QUERY_TYPE}
+
+Research typically takes 2-8 minutes. Starting now.
+```
+
+This pre-flight block is required. It is the user's confirmation that you understood the request.
+
+For prompt-oriented requests, do not ask about `TARGET_TOOL` before research. If the tool is still unknown after research, use `AskUserQuestion` once after presenting findings, then write one copy-paste-ready prompt that matches what the research says works for that tool.
+
 ## Setup: resolve the skill root
 
 ```bash
@@ -97,6 +122,8 @@ fi
 python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --emit=compact
 ```
 
+If the user wants persistent storage, add `--store`. If they want machine-readable output, use `--emit=json`.
+
 ## Useful commands
 
 ```bash
@@ -119,6 +146,18 @@ python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 - Planning and reranking fall back gracefully: Gemini -> OpenAI -> xAI -> deterministic/local.
 - Web retrieval stays within Brave/Serper dated results. Undated web hits are dropped.
 - For OpenClaw-specific watchlist, briefing, and history workflows, use `variants/open/SKILL.md`.
+
+## Web fallback for plugin hosts
+
+If native grounded web retrieval is unavailable because `BRAVE_API_KEY` and `SERPER_API_KEY` are both missing, supplement the CLI output with the host `WebSearch` tool. Use the user's exact terminology, avoid duplicate platform coverage already handled by the CLI, and fold the web findings into the final synthesis instead of dumping raw search results.
+
+Recommended fallback queries:
+
+- `PROMPTING`: `{TOPIC} prompts examples`, `{TOPIC} techniques tips`
+- `RECOMMENDATIONS`: `best {TOPIC}`, `{TOPIC} examples`
+- `NEWS`: `{TOPIC} news`, `{TOPIC} update`
+- `COMPARISON`: `{TOPIC} comparison`
+- `GENERAL`: `{TOPIC} discussion`, `{TOPIC} 2026`
 
 ## Output model
 
@@ -150,6 +189,23 @@ If the topic could have its own X/Twitter account (people, brands, products, com
 WebSearch("{TOPIC} X twitter handle site:x.com")
 ```
 If you find a verified handle, pass `--x-handle={handle}` (without @). This searches their posts directly, finding content they posted that doesn't mention their own name. Skip this for generic concepts ("best headphones 2026", "how to use Docker").
+
+## Display contract
+
+After research finishes, synthesize into a user-facing answer. Do not just paste the raw compact output back to the user.
+
+Always include:
+
+1. `What I learned`
+2. `Stats`
+3. A short invitation with 2-3 concrete follow-up suggestions grounded in the actual findings
+
+For prompt-oriented requests:
+
+- first explain the research-backed patterns briefly
+- then write one prompt, not a prompt pack
+- match the format the research recommends for the target tool
+- if the target tool is still unknown, ask once after the findings, then write the prompt
 
 ## Synthesis guidance
 
@@ -233,6 +289,17 @@ Most mentioned:
 
 Notable mentions: [others with 1-2 mentions]
 ```
+
+### Prompting queries
+
+When the user is asking for prompts or techniques for a specific tool:
+
+1. research first
+2. extract the concrete prompt patterns that recur across the sources
+3. explain those patterns briefly
+4. write one copy-paste-ready prompt for the requested tool
+
+If the research indicates a specific format such as JSON, structured fields, or multi-part prompting, use that format in the final prompt instead of plain prose.
 
 ### Edge cases
 

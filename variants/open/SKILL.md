@@ -3,7 +3,7 @@ name: last30days
 version: "3.0.0"
 description: "Persistent last-30-days research for OpenClaw: one-shot research, watchlists, briefings, and history on top of the v3 engine."
 argument-hint: 'last30 watch "competitors", last30 briefing, last30 history "AI video", last30 codex vs claude code'
-allowed-tools: Bash, Read, Write, WebSearch
+allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch
 homepage: https://github.com/mvanhorn/last30days-skill
 repository: https://github.com/mvanhorn/last30days-skill
 author: mvanhorn
@@ -90,7 +90,7 @@ Use `$SKILL_ROOT` for all scripts and reference files.
 
 ## Session context
 
-At session start, read `${SKILL_ROOT}/variants/open/context.md`.
+At session start, read `${SKILL_ROOT}/variants/open/context.md`. Update it after meaningful watchlist, briefing, history, or one-shot interactions when you learn durable user preferences.
 
 ## Runtime expectations
 
