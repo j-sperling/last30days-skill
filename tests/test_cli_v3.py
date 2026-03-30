@@ -178,7 +178,10 @@ class CliV3Tests(unittest.TestCase):
         progress_cls.assert_called_once_with("test topic", show_banner=True)
         fake_progress.start_processing.assert_called_once()
         fake_progress.end_processing.assert_called_once()
-        fake_progress.show_complete.assert_called_once()
+        fake_progress.show_complete.assert_called_once_with(
+            source_counts={"grounding": 0},
+            display_sources=["grounding"],
+        )
         fake_progress.show_promo.assert_called_once_with("both", diag=diag)
         self.assertIn("# rendered", stdout.getvalue())
 

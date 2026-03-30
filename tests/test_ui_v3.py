@@ -39,6 +39,38 @@ class UiV3Tests(unittest.TestCase):
         self.assertIn("SCRAPECREATORS_API_KEY", text)
         self.assertIn("Brave or Serper", text)
 
+    def test_show_complete_uses_actual_sources_for_source_restricted_runs(self):
+        with mock.patch.object(ui, "IS_TTY", False):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                progress = ui.ProgressDisplay("test topic", show_banner=False)
+                progress.show_complete(
+                    source_counts={"grounding": 2},
+                    display_sources=["grounding"],
+                )
+        output = stderr.getvalue()
+        self.assertIn("Web: 2 results", output)
+        self.assertNotIn("Reddit:", output)
+        self.assertNotIn("X:", output)
+
+    def test_show_complete_supports_newer_sources(self):
+        with mock.patch.object(ui, "IS_TTY", False):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                progress = ui.ProgressDisplay("test topic", show_banner=False)
+                progress.show_complete(
+                    source_counts={
+                        "bluesky": 3,
+                        "truthsocial": 1,
+                        "xiaohongshu": 4,
+                    },
+                    display_sources=["bluesky", "truthsocial", "xiaohongshu"],
+                )
+        output = stderr.getvalue()
+        self.assertIn("Bluesky: 3 posts", output)
+        self.assertIn("Truth Social: 1 post", output)
+        self.assertIn("Xiaohongshu: 4 posts", output)
+
 
 if __name__ == "__main__":
     unittest.main()

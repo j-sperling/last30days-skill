@@ -147,15 +147,19 @@ def _missing_sources_for_promo(diag: dict[str, object]) -> str | None:
 
 def _show_runtime_ui(report: schema.Report, progress: ui.ProgressDisplay, diag: dict[str, object]) -> None:
     counts = {source: len(items) for source, items in report.items_by_source.items()}
+    display_sources = list(
+        dict.fromkeys(
+            [
+                *report.query_plan.source_weights.keys(),
+                *report.items_by_source.keys(),
+                *report.errors_by_source.keys(),
+            ]
+        )
+    )
     progress.end_processing()
     progress.show_complete(
-        reddit_count=counts.get("reddit", 0),
-        x_count=counts.get("x", 0),
-        youtube_count=counts.get("youtube", 0),
-        hn_count=counts.get("hackernews", 0),
-        pm_count=counts.get("polymarket", 0),
-        tiktok_count=counts.get("tiktok", 0),
-        ig_count=counts.get("instagram", 0),
+        source_counts=counts,
+        display_sources=display_sources,
     )
     promo = _missing_sources_for_promo(diag)
     if promo:
