@@ -1,4 +1,4 @@
-"""Web search retrieval via Brave Search and Serper."""
+"""Web search retrieval via Brave Search, Exa, and Serper."""
 
 from __future__ import annotations
 
@@ -44,6 +44,51 @@ def brave_search(
             "why_relevant": "Brave web search",
         })
     artifact = {"label": "brave", "webSearchQueries": [query], "resultCount": len(items)}
+    return items, artifact
+
+
+# ---------------------------------------------------------------------------
+# Exa AI Search
+# ---------------------------------------------------------------------------
+
+def exa_search(
+    query: str, date_range: tuple[str, str], api_key: str, count: int = 5,
+) -> tuple[list[dict], dict]:
+    data = http.request(
+        "POST", "https://api.exa.ai/search",
+        headers={"x-api-key": api_key},
+        json_data={
+            "query": query,
+            "type": "auto",
+            "numResults": count,
+            "startPublishedDate": f"{date_range[0]}T00:00:00.000Z",
+            "endPublishedDate": f"{date_range[1]}T23:59:59.999Z",
+            "contents": {"text": {"maxCharacters": 2000}},
+        },
+        timeout=15,
+    )
+    items = []
+    for i, r in enumerate((data.get("results", []))[:count]):
+        if not isinstance(r, dict):
+            continue
+        url = r.get("url", "")
+        if not url:
+            continue
+        raw_date = r.get("publishedDate") or ""
+        pub_date = _normalize_date(raw_date.split("T")[0] if "T" in raw_date else raw_date[:10]) if raw_date else None
+        if not _in_date_range(pub_date, date_range):
+            continue
+        items.append({
+            "id": f"WE{i + 1}",
+            "title": r.get("title", ""),
+            "url": url,
+            "source_domain": _domain(url),
+            "snippet": (r.get("text") or "")[:500],
+            "date": pub_date,
+            "relevance": 0.8,
+            "why_relevant": "Exa web search",
+        })
+    artifact = {"label": "exa", "webSearchQueries": [query], "resultCount": len(items)}
     return items, artifact
 
 
@@ -112,6 +157,8 @@ def web_search(
     if backend == "auto":
         if config.get("BRAVE_API_KEY"):
             backend = "brave"
+        elif config.get("EXA_API_KEY"):
+            backend = "exa"
         elif config.get("SERPER_API_KEY"):
             backend = "serper"
         else:
@@ -121,6 +168,11 @@ def web_search(
         if not key:
             raise RuntimeError("BRAVE_API_KEY is required when web_backend='brave'")
         return brave_search(query, date_range, key)
+    if backend == "exa":
+        key = config.get("EXA_API_KEY")
+        if not key:
+            raise RuntimeError("EXA_API_KEY is required when web_backend='exa'")
+        return exa_search(query, date_range, key)
     if backend == "serper":
         key = config.get("SERPER_API_KEY")
         if not key:
