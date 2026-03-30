@@ -27,7 +27,8 @@ class UiV3Tests(unittest.TestCase):
             with redirect_stderr(stderr):
                 ui.show_diagnostic_banner(diag)
         output = stderr.getvalue()
-        self.assertIn("No SCRAPECREATORS_API_KEY", output)
+        self.assertIn("Reddit", output)
+        self.assertIn("unavailable", output)
         self.assertIn("Add AUTH_TOKEN/CT0 or XAI_API_KEY", output)
         self.assertIn("brave API available", output)
 

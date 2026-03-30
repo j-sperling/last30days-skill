@@ -174,7 +174,7 @@ class CliV3Tests(unittest.TestCase):
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 rc = cli.main()
         self.assertEqual(0, rc)
-        banner.assert_called_once_with(diag)
+        banner.assert_not_called()  # Banner moved to post-research
         progress_cls.assert_called_once_with("test topic", show_banner=True)
         fake_progress.start_processing.assert_called_once()
         fake_progress.end_processing.assert_called_once()

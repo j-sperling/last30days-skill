@@ -492,6 +492,7 @@ def show_diagnostic_banner(diag: dict):
     """
     available_sources = set(diag.get("available_sources") or [])
     has_reddit = "reddit" in available_sources
+    has_scrapecreators = diag.get("has_scrapecreators", False)
     has_x = "x" in available_sources
     has_youtube = "youtube" in available_sources
     has_web = "grounding" in available_sources
@@ -511,11 +512,12 @@ def show_diagnostic_banner(diag: dict):
         lines.append(f"{Colors.DIM}│{Colors.RESET}                                                     {Colors.DIM}│{Colors.RESET}")
 
         # Reddit
-        if has_reddit:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — ScrapeCreators configured           {Colors.DIM}│{Colors.RESET}")
+        if has_reddit and has_scrapecreators:
+            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — full threads with comments          {Colors.DIM}│{Colors.RESET}")
+        elif has_reddit:
+            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — public threads (titles + scores)   {Colors.DIM}│{Colors.RESET}")
         else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ Reddit{Colors.RESET}    — No SCRAPECREATORS_API_KEY           {Colors.DIM}│{Colors.RESET}")
-            lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Add to ~/.config/last30days/.env         {Colors.DIM}│{Colors.RESET}")
+            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ Reddit{Colors.RESET}    — unavailable                         {Colors.DIM}│{Colors.RESET}")
 
         # X/Twitter
         if has_x:
@@ -536,11 +538,9 @@ def show_diagnostic_banner(diag: dict):
             lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ YouTube{Colors.RESET}   — yt-dlp not installed                {Colors.DIM}│{Colors.RESET}")
             lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Fix: brew install yt-dlp (free)                {Colors.DIM}│{Colors.RESET}")
 
-        # Xiaohongshu
+        # Xiaohongshu (only show when configured)
         if has_xiaohongshu:
             lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Xiaohongshu{Colors.RESET} — API connected + logged in         {Colors.DIM}│{Colors.RESET}")
-        else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.YELLOW}⚡ Xiaohongshu{Colors.RESET} — API not connected/logged in      {Colors.DIM}│{Colors.RESET}")
 
         # Web
         if has_web:
@@ -558,11 +558,12 @@ def show_diagnostic_banner(diag: dict):
         lines.append("│ /last30days v3.0.0 - Source Status                 │")
         lines.append("│                                                     │")
 
-        if has_reddit:
-            lines.append("│  ✅ Reddit    — ScrapeCreators configured           │")
+        if has_reddit and has_scrapecreators:
+            lines.append("│  ✅ Reddit    — full threads with comments          │")
+        elif has_reddit:
+            lines.append("│  ✅ Reddit    — public threads (titles + scores)   │")
         else:
-            lines.append("│  ❌ Reddit    — No SCRAPECREATORS_API_KEY           │")
-            lines.append("│     └─ Add to ~/.config/last30days/.env            │")
+            lines.append("│  ❌ Reddit    — unavailable                         │")
 
         if has_x:
             lines.append("│  ✅ X/Twitter — available                            │")
@@ -581,8 +582,6 @@ def show_diagnostic_banner(diag: dict):
 
         if has_xiaohongshu:
             lines.append("│  ✅ Xiaohongshu — API connected + logged in         │")
-        else:
-            lines.append("│  ⚡ Xiaohongshu — API not connected/logged in       │")
 
         if has_web:
             backend = native_web_backend or "native"

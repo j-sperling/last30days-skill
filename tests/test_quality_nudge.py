@@ -146,7 +146,7 @@ class TestSCActiveNoX:
             ytdlp_installed=True,
         )
         assert q["nudge_text"] is not None
-        assert "browser" in q["nudge_text"].lower()
+        assert "firefox" in q["nudge_text"].lower()
         assert "x.com" in q["nudge_text"].lower()
 
 
@@ -193,11 +193,11 @@ class TestSCNudgeContent:
 
     def test_sc_nudge_content(self):
         q = _compute()
-        assert "100 free API calls, no credit card" in q["nudge_text"]
+        assert "100 free calls, no credit card" in q["nudge_text"]
 
     def test_sc_nudge_content_when_only_missing_sc(self):
         q = _compute(
             config_overrides={"AUTH_TOKEN": "tok123"},
             ytdlp_installed=True,
         )
-        assert "100 free API calls, no credit card" in q["nudge_text"]
+        assert "100 free calls, no credit card" in q["nudge_text"]

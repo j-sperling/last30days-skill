@@ -16,13 +16,12 @@ SOURCE_LABELS = {
 
 
 def render_compact(report: schema.Report, cluster_limit: int = 8) -> str:
+    non_empty = [s for s, items in sorted(report.items_by_source.items()) if items]
     lines = [
         f"# last30days v3.0.0: {report.topic}",
         "",
         f"- Date range: {report.range_from} to {report.range_to}",
-        f"- Intent: {report.query_plan.intent}",
-        f"- Planner: {report.provider_runtime.reasoning_provider} / {report.provider_runtime.planner_model}",
-        f"- Reranker: {report.provider_runtime.rerank_model}",
+        f"- Sources: {len(non_empty)} active ({', '.join(_source_label(s) for s in non_empty)})" if non_empty else "- Sources: none",
         "",
     ]
 

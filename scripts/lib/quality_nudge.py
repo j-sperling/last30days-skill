@@ -154,36 +154,36 @@ def _build_nudge_text(core_missing: List[str], core_errored: List[str]) -> str:
     if "x" in core_missing:
         if "x" in core_errored:
             free_suggestions.append(
-                "X errored — try refreshing your browser cookies "
-                "(log into x.com, then re-run)."
+                "X/Twitter errored -- log into x.com in your browser, then re-run."
             )
         else:
             free_suggestions.append(
-                "X/Twitter: log into x.com in Firefox or Safari, then re-run. "
-                "Add FROM_BROWSER=auto to also check Chrome."
+                "X/Twitter: log into x.com in Firefox or Safari, then re-run "
+                "-- cookies are detected automatically. Or add AUTH_TOKEN and "
+                "CT0 to ~/.config/last30days/.env."
             )
 
     if "youtube" in core_missing:
         if "youtube" in core_errored:
             free_suggestions.append(
-                "YouTube errored — check that yt-dlp is up to date: "
-                "brew upgrade yt-dlp"
+                "YouTube errored -- update yt-dlp: brew upgrade yt-dlp"
             )
         else:
             free_suggestions.append(
-                "YouTube: install yt-dlp — brew install yt-dlp"
+                "YouTube: install yt-dlp -- brew install yt-dlp (free)"
             )
 
     if "reddit_comments" in core_missing:
         if "reddit_comments" in core_errored:
             paid_suggestions.append(
-                "Reddit comments errored — check your ScrapeCreators API key "
-                "at scrapecreators.com."
+                "Reddit comments errored -- check your key at scrapecreators.com."
             )
         else:
             paid_suggestions.append(
-                "Reddit with comments: add SCRAPECREATORS_API_KEY — "
-                "100 free API calls, no credit card — scrapecreators.com"
+                "Reddit is active but limited to titles. Unlock full threads "
+                "with comments: get a free key at scrapecreators.com (100 free "
+                "calls, no credit card), then add SCRAPECREATORS_API_KEY=yourkey "
+                "to ~/.config/last30days/.env"
             )
 
     if free_suggestions:
