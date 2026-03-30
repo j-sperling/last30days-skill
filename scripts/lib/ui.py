@@ -183,12 +183,11 @@ I just researched that for you. Here's what I've got right now:
 
 {status_line}
 
-You can unlock more sources with API keys. `SCRAPECREATORS_API_KEY` enables Reddit, TikTok, and Instagram; xAI or Bird cookies enable X; Brave or Serper enable native grounded web search.
+More sources means better research, but it works fine as-is. You can unlock more for free -- log into x.com in your browser for X, run `brew install yt-dlp` for YouTube transcripts, or get a free ScrapeCreators key at scrapecreators.com for Reddit comments + TikTok + Instagram.
 
 Some examples of what you can do:
 - "last30 what are people saying about Figma"
 - "last30 watch my biggest competitor every week"
-- "last30 watch Peter Steinberger every 30 days"
 - "last30 watch AI video tools monthly"
 - "last30 what have you found about AI video?"
 

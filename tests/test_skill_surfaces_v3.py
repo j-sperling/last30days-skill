@@ -110,9 +110,8 @@ class SkillSurfaceV3Tests(unittest.TestCase):
     def test_root_skill_restores_interactive_prompt_flow(self):
         root_skill = (REPO_ROOT / "SKILL.md").read_text()
         self.assertIn("allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch", root_skill)
-        self.assertIn("Parsed intent:", root_skill)
+        self.assertIn("synthesizing what people are actually saying", root_skill)
         self.assertIn("QUERY_TYPE", root_skill)
-        self.assertIn('TARGET_TOOL or "unknown"', root_skill)
         self.assertIn("Research typically takes 2-8 minutes. Starting now.", root_skill)
         self.assertIn("## Web fallback for plugin hosts", root_skill)
         self.assertIn('python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose', root_skill)

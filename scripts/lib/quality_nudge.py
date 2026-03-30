@@ -158,9 +158,9 @@ def _build_nudge_text(core_missing: List[str], core_errored: List[str]) -> str:
             )
         else:
             free_suggestions.append(
-                "X/Twitter: log into x.com in Firefox or Safari, then re-run "
-                "-- cookies are detected automatically. Or add AUTH_TOKEN and "
-                "CT0 to ~/.config/last30days/.env."
+                "X/Twitter: real-time posts with likes and reposts -- the fastest "
+                "signal for breaking topics. Log into x.com in Firefox or Safari, "
+                "then re-run (cookies are detected automatically)."
             )
 
     if "youtube" in core_missing:
@@ -170,7 +170,8 @@ def _build_nudge_text(core_missing: List[str], core_errored: List[str]) -> str:
             )
         else:
             free_suggestions.append(
-                "YouTube: install yt-dlp -- brew install yt-dlp (free)"
+                "YouTube: video transcripts with key moments -- often the deepest "
+                "explanations on any topic. Install yt-dlp: brew install yt-dlp (free)"
             )
 
     if "reddit_comments" in core_missing:
@@ -180,10 +181,11 @@ def _build_nudge_text(core_missing: List[str], core_errored: List[str]) -> str:
             )
         else:
             paid_suggestions.append(
-                "Reddit is active but limited to titles. Unlock full threads "
-                "with comments: get a free key at scrapecreators.com (100 free "
-                "calls, no credit card), then add SCRAPECREATORS_API_KEY=yourkey "
-                "to ~/.config/last30days/.env"
+                "Reddit comments are often the highest-value research content -- "
+                "real user opinions with upvote signals. Currently active with "
+                "titles only. Get a free key at scrapecreators.com (100 free calls, "
+                "no credit card) to unlock full threads with comments, plus TikTok "
+                "and Instagram."
             )
 
     if free_suggestions:

@@ -37,8 +37,8 @@ class UiV3Tests(unittest.TestCase):
             {"available_sources": ["reddit", "youtube", "grounding"]}
         )
         self.assertIn("Reddit ✓, X ✗, YouTube ✓, Web ✓", text)
-        self.assertIn("SCRAPECREATORS_API_KEY", text)
-        self.assertIn("Brave or Serper", text)
+        self.assertIn("works fine as-is", text)
+        self.assertIn("scrapecreators.com", text)
 
     def test_show_complete_uses_actual_sources_for_source_restricted_runs(self):
         with mock.patch.object(ui, "IS_TTY", False):

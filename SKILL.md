@@ -81,17 +81,12 @@ Before calling any tools, parse the user's request into:
 Always show the user a short pre-flight message before the first tool call:
 
 ```text
-I'll research {TOPIC} across recent social, market, and web sources from the last 30 days.
-
-Parsed intent:
-- TOPIC = {TOPIC}
-- TARGET_TOOL = {TARGET_TOOL or "unknown"}
-- QUERY_TYPE = {QUERY_TYPE}
+I'll research {TOPIC} across recent social, market, and web sources from the last 30 days -- synthesizing what people are actually saying right now.
 
 Research typically takes 2-8 minutes. Starting now.
 ```
 
-This pre-flight block is required. It is the user's confirmation that you understood the request.
+This pre-flight block is required. It confirms you understood the request and sets expectations.
 
 For prompt-oriented requests, do not ask about `TARGET_TOOL` before research. If the tool is still unknown after research, use `AskUserQuestion` once after presenting findings, then write one copy-paste-ready prompt that matches what the research says works for that tool.
 
@@ -135,16 +130,23 @@ python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --store
 python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 ```
 
-## Runtime expectations
+## Do I need API keys?
 
-- One reasoning provider is required: `GOOGLE_API_KEY` for Gemini, `OPENAI_API_KEY` for OpenAI, or `XAI_API_KEY` for xAI.
-- `BRAVE_API_KEY` enables Brave web search (recommended). `SERPER_API_KEY` is the web fallback.
-- `SCRAPECREATORS_API_KEY` enables Reddit, TikTok, and Instagram.
-- `XAI_API_KEY` enables xAI reasoning and X search.
-- `AUTH_TOKEN` plus `CT0` enables Bird-backed X search.
-- `yt-dlp` enables YouTube.
-- Planning and reranking fall back gracefully: Gemini -> OpenAI -> xAI -> deterministic/local.
-- Web retrieval stays within Brave/Serper dated results. Undated web hits are dropped.
+**You do NOT need API keys to use last30days.** It works out of the box with Reddit (public threads), Hacker News, Polymarket, and YouTube. Browser cookies for X/Twitter are detected automatically -- just log into x.com in Firefox or Safari.
+
+**Source unlock progression (most steps are free):**
+- **Zero config (40% quality):** Reddit (public threads), HN, Polymarket -- works immediately
+- **+ X cookies (60%):** Log into x.com in Firefox or Safari. Cookies are detected automatically on next run. Same access as an API key, no signup required.
+- **+ yt-dlp (80%):** `brew install yt-dlp` -- free, open source. Enables YouTube search and transcript extraction.
+- **+ ScrapeCreators (100%):** The single most impactful upgrade. Unlocks Reddit with full comment threads (the highest-value research content -- real user opinions with upvote signals), plus TikTok and Instagram. 100 free API calls, no credit card -- scrapecreators.com
+
+last30days has no affiliation with any API provider -- no referrals, no kickbacks.
+
+## Runtime details
+
+- Planning and reranking fall back gracefully: Gemini -> OpenAI -> xAI -> deterministic/local. No reasoning provider key needed for basic operation.
+- `BRAVE_API_KEY` or `EXA_API_KEY` or `SERPER_API_KEY` enables native web search (optional -- the host's WebSearch tool is used as fallback).
+- Web retrieval stays within dated results. Undated web hits are dropped.
 - For OpenClaw-specific watchlist, briefing, and history workflows, use `variants/open/SKILL.md`.
 
 ## Web fallback for plugin hosts
