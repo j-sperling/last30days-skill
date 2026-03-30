@@ -60,6 +60,13 @@ class TestExtractScore(unittest.TestCase):
     def test_missing(self):
         self.assertEqual(0, _extract_score({}))
 
+    def test_zero_preserved(self):
+        self.assertEqual(0, _extract_score({"ups": 0}))
+
+    def test_zero_ups_does_not_fall_through(self):
+        # ups=0 should be returned, not fall through to score
+        self.assertEqual(0, _extract_score({"ups": 0, "score": 5}))
+
 
 class TestExtractDate(unittest.TestCase):
     def test_unix_timestamp(self):

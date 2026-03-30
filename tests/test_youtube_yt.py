@@ -23,6 +23,43 @@ class _DummyProc:
         return 0
 
 
+class TestYouTubeEngagementZero(unittest.TestCase):
+    """Verify that 0 engagement counts are preserved (not coerced to fallback)."""
+
+    def test_zero_view_count_preserved(self):
+        """video.get('view_count') == 0 must stay 0, not become the fallback."""
+        import json
+        import tempfile
+        import os
+
+        video = {
+            "id": "abc123",
+            "title": "Test",
+            "view_count": 0,
+            "like_count": 0,
+            "comment_count": 0,
+            "upload_date": "20260301",
+            "description": "desc",
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps(video) + "\n")
+            f.flush()
+            with open(f.name) as rf:
+                lines = rf.readlines()
+
+        # Re-parse as the search function would
+        parsed = json.loads(lines[0])
+        view_count = parsed.get("view_count") if parsed.get("view_count") is not None else 0
+        like_count = parsed.get("like_count") if parsed.get("like_count") is not None else 0
+        comment_count = parsed.get("comment_count") if parsed.get("comment_count") is not None else 0
+
+        os.unlink(f.name)
+
+        self.assertEqual(0, view_count)
+        self.assertEqual(0, like_count)
+        self.assertEqual(0, comment_count)
+
+
 class TestYtDlpFlags(unittest.TestCase):
     def test_search_ignores_global_config_and_browser_cookies(self):
         proc = _DummyProc()

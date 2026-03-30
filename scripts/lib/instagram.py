@@ -99,6 +99,77 @@ def _extract_hashtags(caption_text: str) -> List[str]:
     return re.findall(r'#(\w+)', caption_text)
 
 
+def _parse_items(raw_items: List[Dict[str, Any]], core_topic: str) -> List[Dict[str, Any]]:
+    """Parse raw Instagram items into normalized dicts."""
+    items = []
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+
+        # Extract reel ID and shortcode
+        reel_pk = str(raw.get("id", raw.get("pk", "")))
+        shortcode = raw.get("shortcode", raw.get("code", ""))
+
+        # Caption text -- can be a string or dict depending on endpoint
+        caption_obj = raw.get("caption", "")
+        if isinstance(caption_obj, dict):
+            text = caption_obj.get("text", "")
+        elif isinstance(caption_obj, str):
+            text = caption_obj
+        else:
+            text = raw.get("desc", raw.get("text", ""))
+
+        # Engagement metrics
+        play_count = raw.get("video_play_count") or raw.get("video_view_count") or raw.get("play_count") or 0
+        like_count = raw.get("like_count") or 0
+        comment_count = raw.get("comment_count") or 0
+
+        # Author info -- 'owner' in reels/search, 'user' in user/reels
+        owner_raw = raw.get("owner") or raw.get("user")
+        if isinstance(owner_raw, dict):
+            author_name = owner_raw.get("username", "")
+        elif isinstance(owner_raw, str):
+            author_name = owner_raw
+        else:
+            author_name = ""
+
+        # Duration
+        duration = raw.get("video_duration")
+
+        # Date
+        date_str = _parse_date(raw)
+
+        # Hashtags from caption text
+        hashtags = _extract_hashtags(text)
+
+        # Compute relevance with hashtag boost
+        relevance = _compute_relevance(core_topic, text, hashtags)
+
+        # Build URL -- prefer API-provided url, fallback to shortcode
+        url = raw.get("url", "")
+        if not url and shortcode:
+            url = f"https://www.instagram.com/reel/{shortcode}"
+
+        items.append({
+            "video_id": reel_pk,
+            "text": text,
+            "url": url,
+            "author_name": author_name,
+            "date": date_str,
+            "engagement": {
+                "views": play_count,
+                "likes": like_count,
+                "comments": comment_count,
+            },
+            "hashtags": hashtags,
+            "duration": duration,
+            "relevance": relevance,
+            "why_relevant": f"Instagram: {text[:60]}" if text else f"Instagram: {core_topic}",
+            "caption_snippet": "",  # populated by fetch_captions
+        })
+    return items
+
+
 def search_instagram(
     topic: str,
     from_date: str,
@@ -159,67 +230,7 @@ def search_instagram(
     raw_items = raw_items[:config["results_per_page"]]
 
     # Parse items
-    items = []
-    for raw in raw_items:
-        if not isinstance(raw, dict):
-            continue
-
-        # Extract reel ID and shortcode
-        reel_pk = str(raw.get("id", raw.get("pk", "")))
-        shortcode = raw.get("shortcode", raw.get("code", ""))
-
-        # Caption text — can be a string or dict depending on endpoint
-        caption_obj = raw.get("caption", "")
-        if isinstance(caption_obj, dict):
-            text = caption_obj.get("text", "")
-        elif isinstance(caption_obj, str):
-            text = caption_obj
-        else:
-            text = raw.get("desc", raw.get("text", ""))
-
-        # Engagement metrics
-        play_count = raw.get("video_play_count") or raw.get("video_view_count") or raw.get("play_count") or 0
-        like_count = raw.get("like_count") or 0
-        comment_count = raw.get("comment_count") or 0
-
-        # Author info — 'owner' in reels/search, 'user' in user/reels
-        owner = raw.get("owner") or raw.get("user") or {}
-        author_name = owner.get("username", "")
-
-        # Duration
-        duration = raw.get("video_duration")
-
-        # Date
-        date_str = _parse_date(raw)
-
-        # Hashtags from caption text
-        hashtags = _extract_hashtags(text)
-
-        # Compute relevance with hashtag boost
-        relevance = _compute_relevance(core_topic, text, hashtags)
-
-        # Build URL — prefer API-provided url, fallback to shortcode
-        url = raw.get("url", "")
-        if not url and shortcode:
-            url = f"https://www.instagram.com/reel/{shortcode}"
-
-        items.append({
-            "video_id": reel_pk,
-            "text": text,
-            "url": url,
-            "author_name": author_name,
-            "date": date_str,
-            "engagement": {
-                "views": play_count,
-                "likes": like_count,
-                "comments": comment_count,
-            },
-            "hashtags": hashtags,
-            "duration": duration,
-            "relevance": relevance,
-            "why_relevant": f"Instagram: {text[:60]}" if text else f"Instagram: {core_topic}",
-            "caption_snippet": "",  # populated by fetch_captions
-        })
+    items = _parse_items(raw_items, core_topic)
 
     # Hard date filter
     in_range = [i for i in items if i["date"] and from_date <= i["date"] <= to_date]

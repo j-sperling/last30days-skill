@@ -19,6 +19,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .relevance import token_overlap_relevance as _compute_relevance
 
+
+def _first_of(*values):
+    """Return first value that is not None."""
+    for v in values:
+        if v is not None:
+            return v
+    return None
+
 # Path to the vendored bird-search wrapper
 _BIRD_SEARCH_MJS = Path(__file__).parent / "vendor" / "bird-search" / "bird-search.mjs"
 
@@ -422,10 +430,10 @@ def parse_bird_response(response: Dict[str, Any], query: str = "") -> List[Dict[
 
         # Build engagement dict (Bird uses camelCase: likeCount, retweetCount, etc.)
         engagement = {
-            "likes": tweet.get("likeCount") or tweet.get("like_count") or tweet.get("favorite_count"),
-            "reposts": tweet.get("retweetCount") or tweet.get("retweet_count"),
-            "replies": tweet.get("replyCount") or tweet.get("reply_count"),
-            "quotes": tweet.get("quoteCount") or tweet.get("quote_count"),
+            "likes": _first_of(tweet.get("likeCount"), tweet.get("like_count"), tweet.get("favorite_count")),
+            "reposts": _first_of(tweet.get("retweetCount"), tweet.get("retweet_count")),
+            "replies": _first_of(tweet.get("replyCount"), tweet.get("reply_count")),
+            "quotes": _first_of(tweet.get("quoteCount"), tweet.get("quote_count")),
         }
         # Convert to int where possible
         for key in engagement:
@@ -442,7 +450,7 @@ def parse_bird_response(response: Dict[str, Any], query: str = "") -> List[Dict[
             "url": url,
             "author_handle": author_handle.lstrip("@"),
             "date": date,
-            "engagement": engagement if any(v is not None for v in engagement.values()) else None,
+            "engagement": engagement,
             "why_relevant": "",  # Bird doesn't provide relevance explanations
             "relevance": _compute_relevance(query, str(tweet.get("text", ""))) if query else 0.7,
         }

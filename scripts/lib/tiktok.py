@@ -91,6 +91,66 @@ def _clean_webvtt(text: str) -> str:
     return ' '.join(cleaned)
 
 
+def _parse_items(raw_items: List[Dict[str, Any]], core_topic: str) -> List[Dict[str, Any]]:
+    """Parse raw TikTok items into normalized dicts."""
+    items = []
+    for raw in raw_items:
+        video_id = str(raw.get("aweme_id", ""))
+        text = raw.get("desc", "")
+
+        stats = raw.get("statistics") if isinstance(raw.get("statistics"), dict) else {}
+        play_count = stats.get("play_count") if stats.get("play_count") is not None else 0
+        digg_count = stats.get("digg_count") if stats.get("digg_count") is not None else 0
+        comment_count = stats.get("comment_count") if stats.get("comment_count") is not None else 0
+        share_count = stats.get("share_count") if stats.get("share_count") is not None else 0
+
+        author_raw = raw.get("author")
+        if isinstance(author_raw, dict):
+            author_name = author_raw.get("unique_id", "")
+        elif isinstance(author_raw, str):
+            author_name = author_raw
+        else:
+            author_name = ""
+
+        share_url = raw.get("share_url", "")
+        text_extra = raw.get("text_extra") or []
+        hashtag_names = [t.get("hashtag_name", "") for t in text_extra
+                         if isinstance(t, dict) and t.get("hashtag_name")]
+
+        video_raw = raw.get("video")
+        duration = video_raw.get("duration") if isinstance(video_raw, dict) else None
+
+        date_str = _parse_date(raw)
+
+        # Compute relevance with hashtag boost
+        relevance = _compute_relevance(core_topic, text, hashtag_names)
+
+        # Build URL: prefer share_url, fallback to constructed URL
+        url = share_url.split("?")[0] if share_url else ""
+        if not url and author_name and video_id:
+            url = f"https://www.tiktok.com/@{author_name}/video/{video_id}"
+
+        items.append({
+            "video_id": video_id,
+            "text": text,
+            "url": url,
+            "author_name": author_name,
+            "date": date_str,
+            "engagement": {
+                "views": play_count,
+                "likes": digg_count,
+                "comments": comment_count,
+                "shares": share_count,
+            },
+            "hashtags": hashtag_names,
+            "duration": duration,
+            "relevance": relevance,
+            "why_relevant": f"TikTok: {text[:60]}" if text else f"TikTok: {core_topic}",
+            "caption_snippet": "",  # populated by fetch_captions
+        })
+    return items
+
+
 def search_tiktok(
     topic: str,
     from_date: str,
@@ -156,51 +216,7 @@ def search_tiktok(
     raw_items = raw_items[:config["results_per_page"]]
 
     # Parse items
-    items = []
-    for raw in raw_items:
-        video_id = str(raw.get("aweme_id", ""))
-        text = raw.get("desc", "")
-        stats = raw.get("statistics") or {}
-        play_count = stats.get("play_count") or 0
-        digg_count = stats.get("digg_count") or 0
-        comment_count = stats.get("comment_count") or 0
-        share_count = stats.get("share_count") or 0
-        author = raw.get("author") or {}
-        author_name = author.get("unique_id", "")
-        share_url = raw.get("share_url", "")
-        text_extra = raw.get("text_extra") or []
-        hashtag_names = [t.get("hashtag_name", "") for t in text_extra
-                         if isinstance(t, dict) and t.get("hashtag_name")]
-        duration = (raw.get("video") or {}).get("duration")
-
-        date_str = _parse_date(raw)
-
-        # Compute relevance with hashtag boost
-        relevance = _compute_relevance(core_topic, text, hashtag_names)
-
-        # Build URL: prefer share_url, fallback to constructed URL
-        url = share_url.split("?")[0] if share_url else ""
-        if not url and author_name and video_id:
-            url = f"https://www.tiktok.com/@{author_name}/video/{video_id}"
-
-        items.append({
-            "video_id": video_id,
-            "text": text,
-            "url": url,
-            "author_name": author_name,
-            "date": date_str,
-            "engagement": {
-                "views": play_count,
-                "likes": digg_count,
-                "comments": comment_count,
-                "shares": share_count,
-            },
-            "hashtags": hashtag_names,
-            "duration": duration,
-            "relevance": relevance,
-            "why_relevant": f"TikTok: {text[:60]}" if text else f"TikTok: {core_topic}",
-            "caption_snippet": "",  # populated by fetch_captions
-        })
+    items = _parse_items(raw_items, core_topic)
 
     # Hard date filter
     in_range = [i for i in items if i["date"] and from_date <= i["date"] <= to_date]

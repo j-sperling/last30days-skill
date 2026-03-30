@@ -108,7 +108,7 @@ class Candidate:
     native_ranks: dict[str, int]
     local_relevance: float
     freshness: int
-    engagement: int | None
+    engagement: int | float | None
     source_quality: float
     rrf_score: float
     sources: list[str] = field(default_factory=list)

@@ -265,5 +265,55 @@ class FusionV3Tests(unittest.TestCase):
         )
 
 
+class TestUrlNormalization(unittest.TestCase):
+    def test_strips_www(self):
+        from lib.fusion import _normalize_url
+        self.assertEqual(
+            _normalize_url("https://www.reddit.com/r/test"),
+            _normalize_url("https://reddit.com/r/test"),
+        )
+
+    def test_strips_old_prefix(self):
+        from lib.fusion import _normalize_url
+        self.assertEqual(
+            _normalize_url("https://old.reddit.com/r/test"),
+            _normalize_url("https://reddit.com/r/test"),
+        )
+
+    def test_strips_mobile_prefix(self):
+        from lib.fusion import _normalize_url
+        self.assertEqual(
+            _normalize_url("https://m.youtube.com/watch?v=abc"),
+            _normalize_url("https://youtube.com/watch?v=abc"),
+        )
+
+    def test_strips_utm_params(self):
+        from lib.fusion import _normalize_url
+        self.assertEqual(
+            _normalize_url("https://example.com/page?utm_source=twitter&id=5"),
+            _normalize_url("https://example.com/page?id=5"),
+        )
+
+    def test_strips_trailing_slash(self):
+        from lib.fusion import _normalize_url
+        self.assertEqual(
+            _normalize_url("https://example.com/page/"),
+            _normalize_url("https://example.com/page"),
+        )
+
+    def test_preserves_non_tracking_params(self):
+        from lib.fusion import _normalize_url
+        result = _normalize_url("https://example.com/page?id=5&sort=new")
+        self.assertIn("id=5", result)
+        self.assertIn("sort=new", result)
+
+    def test_case_insensitive(self):
+        from lib.fusion import _normalize_url
+        self.assertEqual(
+            _normalize_url("https://Reddit.com/r/Test"),
+            _normalize_url("https://reddit.com/r/test"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

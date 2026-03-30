@@ -199,9 +199,9 @@ def search_youtube(
             continue
 
         video_id = video.get("id", "")
-        view_count = video.get("view_count") or 0
-        like_count = video.get("like_count") or 0
-        comment_count = video.get("comment_count") or 0
+        view_count = video.get("view_count") if video.get("view_count") is not None else 0
+        like_count = video.get("like_count") if video.get("like_count") is not None else 0
+        comment_count = video.get("comment_count") if video.get("comment_count") is not None else 0
         upload_date = video.get("upload_date", "")  # YYYYMMDD
 
         # Convert YYYYMMDD to YYYY-MM-DD

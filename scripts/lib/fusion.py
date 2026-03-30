@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
 from . import schema
 
 # Standard RRF smoothing constant (Cormack et al. 2009)
@@ -12,9 +14,23 @@ def _candidate_sort_key(c: schema.Candidate) -> tuple:
     return (-c.rrf_score, -c.local_relevance, -c.freshness, schema.candidate_source_label(c), c.title)
 
 
+def _normalize_url(url: str) -> str:
+    """Normalize URL for dedup: lowercase, strip www/old/m prefixes, remove tracking params."""
+    parsed = urlparse(url.strip().lower())
+    netloc = parsed.netloc
+    for prefix in ("www.", "old.", "m."):
+        if netloc.startswith(prefix):
+            netloc = netloc[len(prefix):]
+    # Strip tracking params
+    params = parse_qs(parsed.query)
+    clean_params = {k: v for k, v in params.items() if not k.startswith("utm_")}
+    query = urlencode(clean_params, doseq=True)
+    return urlunparse((parsed.scheme, netloc, parsed.path.rstrip("/"), "", query, ""))
+
+
 def candidate_key(item: schema.SourceItem) -> str:
     if item.url:
-        return item.url.strip()
+        return _normalize_url(item.url)
     return f"{item.source}:{item.item_id}"
 
 

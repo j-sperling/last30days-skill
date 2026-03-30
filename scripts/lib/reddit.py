@@ -19,6 +19,14 @@ try:
 except ImportError:
     _requests = None
 
+
+def _first_of(*values, default=None):
+    """Return first value that is not None."""
+    for v in values:
+        if v is not None:
+            return v
+    return default
+
 from . import http, log
 
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com/v1/reddit"
@@ -189,7 +197,7 @@ def discover_subreddits(
             base *= 0.3
 
         # Bonus: post engagement (high-engagement posts = better sub)
-        ups = post.get("ups") or post.get("score") or post.get("votes") or 0
+        ups = _first_of(post.get("ups"), post.get("score"), post.get("votes"), default=0)
         if ups and ups > 100:
             base += 0.5
 
@@ -238,7 +246,7 @@ def _extract_score(post: Dict[str, Any]) -> int:
 
     Global search uses ``votes``; subreddit search uses ``ups``/``score``.
     """
-    return post.get("ups") or post.get("score") or post.get("votes") or 0
+    return _first_of(post.get("ups"), post.get("score"), post.get("votes"), default=0)
 
 
 def _extract_date(post: Dict[str, Any]) -> Optional[str]:
