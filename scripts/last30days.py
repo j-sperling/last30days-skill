@@ -77,11 +77,11 @@ def save_output(report: schema.Report, emit: str, save_dir: str) -> Path:
     return out_path
 
 
-def emit_output(report: schema.Report, emit: str) -> str:
+def emit_output(report: schema.Report, emit: str, quality: dict | None = None) -> str:
     if emit == "json":
         return json.dumps(schema.to_dict(report), indent=2, sort_keys=True)
     if emit in {"compact", "md"}:
-        return render.render_compact(report)
+        return render.render_compact(report, quality=quality)
     if emit == "context":
         return render.render_context(report)
     raise SystemExit(f"Unsupported emit mode: {emit}")
@@ -226,21 +226,30 @@ def main() -> int:
         )
         sys.stderr.flush()
 
-    # Show quality nudge if applicable
+    # Compute quality score for render output
+    quality = None
     try:
         from lib import quality_nudge
-        quality = quality_nudge.compute_quality_score(config, {})
-        if quality.get("nudge_text"):
-            sys.stderr.write(f"\n{quality['nudge_text']}\n")
-            sys.stderr.flush()
+        quality = quality_nudge.quality_from_report(config, report)
     except Exception:
         pass
 
-    rendered = emit_output(report, args.emit)
+    rendered = emit_output(report, args.emit, quality=quality)
     if args.save_dir:
         save_path = save_output(report, args.emit, args.save_dir)
         sys.stderr.write(f"[last30days] Saved output to {save_path}\n")
         sys.stderr.flush()
+
+    # NUX: signal first-run so SKILL.md can trigger setup wizard
+    if args.emit in {"compact", "md"}:
+        try:
+            from lib import setup_wizard
+            if setup_wizard.is_first_run(config):
+                print("FIRST_RUN: true")
+                print("")
+        except Exception:
+            pass
+
     print(rendered)
     return 0
 

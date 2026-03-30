@@ -14,8 +14,36 @@ SOURCE_LABELS = {
     "x": "X",
 }
 
+SOURCE_EMOJI: dict[str, str] = {
+    "reddit": "\U0001f7e0",
+    "x": "\U0001f535",
+    "youtube": "\U0001f534",
+    "tiktok": "\U0001f3b5",
+    "instagram": "\U0001f4f8",
+    "hackernews": "\U0001f7e1",
+    "bluesky": "\U0001f98b",
+    "truthsocial": "\U0001f1fa\U0001f1f8",
+    "polymarket": "\U0001f4ca",
+    "grounding": "\U0001f310",
+    "xiaohongshu": "\U0001f4d5",
+}
 
-def render_compact(report: schema.Report, cluster_limit: int = 8) -> str:
+SOURCE_NOUN: dict[str, tuple[str, str]] = {
+    "reddit": ("thread", "threads"),
+    "x": ("post", "posts"),
+    "youtube": ("video", "videos"),
+    "tiktok": ("video", "videos"),
+    "instagram": ("reel", "reels"),
+    "hackernews": ("story", "stories"),
+    "bluesky": ("post", "posts"),
+    "truthsocial": ("post", "posts"),
+    "polymarket": ("market", "markets"),
+    "grounding": ("page", "pages"),
+    "xiaohongshu": ("note", "notes"),
+}
+
+
+def render_compact(report: schema.Report, cluster_limit: int = 8, quality: dict | None = None) -> str:
     non_empty = [s for s, items in sorted(report.items_by_source.items()) if items]
     lines = [
         f"# last30days v3.0.0: {report.topic}",
@@ -56,8 +84,11 @@ def render_compact(report: schema.Report, cluster_limit: int = 8) -> str:
             lines.extend(_render_candidate(candidate, prefix=f"{rep_index}."))
         lines.append("")
 
-    lines.extend(_render_stats(report))
-    lines.extend(_render_source_coverage(report))
+    lines.extend(_render_stats_tree(report))
+    lines.extend(_render_source_status(report))
+    if quality:
+        lines.extend(_render_quality_nudge(quality))
+    lines.extend(_render_metadata(report))
     return "\n".join(lines).strip() + "\n"
 
 
@@ -128,23 +159,26 @@ def _render_candidate(candidate: schema.Candidate, prefix: str) -> list[str]:
     return lines
 
 
-def _render_source_coverage(report: schema.Report) -> list[str]:
+def _render_source_status(report: schema.Report) -> list[str]:
     lines = [
-        "## Source Coverage",
+        "## Source Status",
         "",
     ]
+    seen_sources: set[str] = set()
     for source, items in sorted(report.items_by_source.items()):
-        lines.append(f"- {_source_label(source)}: {len(items)} item{'s' if len(items) != 1 else ''}")
-    if report.errors_by_source:
-        lines.append("")
-        lines.append("## Source Errors")
-        lines.append("")
-        for source, error in sorted(report.errors_by_source.items()):
-            lines.append(f"- {_source_label(source)}: {error}")
+        seen_sources.add(source)
+        if not items:
+            if source in report.errors_by_source:
+                lines.append(f"  \u274c {_source_label(source)}: error -- {report.errors_by_source[source]}")
+            continue
+        lines.append(f"  \u2705 {_source_label(source)}: {_count_noun(source, len(items))}")
+    for source, error in sorted(report.errors_by_source.items()):
+        if source not in seen_sources:
+            lines.append(f"  \u274c {_source_label(source)}: error -- {error}")
     return lines
 
 
-def _render_stats(report: schema.Report) -> list[str]:
+def _render_stats_tree(report: schema.Report) -> list[str]:
     lines = [
         "## Stats",
         "",
@@ -154,30 +188,64 @@ def _render_stats(report: schema.Report) -> list[str]:
         for source, items in sorted(report.items_by_source.items())
         if items
     }
-    total_items = sum(len(items) for items in non_empty_sources.values())
     if not non_empty_sources:
         lines.append("- No usable source metrics available.")
         lines.append("")
         return lines
 
-    lines.append(
-        f"- Total evidence: {total_items} item{'s' if total_items != 1 else ''} across "
-        f"{len(non_empty_sources)} source{'s' if len(non_empty_sources) != 1 else ''}"
-    )
-    top_voices = _top_voices_overall(non_empty_sources)
-    if top_voices:
-        lines.append(f"- Top voices: {', '.join(top_voices)}")
+    lines.append("\u2705 All sources reported back!")
+
+    source_lines: list[str] = []
     for source, items in non_empty_sources.items():
-        parts = [f"{len(items)} item{'s' if len(items) != 1 else ''}"]
+        emoji = SOURCE_EMOJI.get(source, "")
+        parts = [f"{_count_noun(source, len(items))}"]
         engagement_summary = _aggregate_engagement(source, items)
         if engagement_summary:
             parts.append(engagement_summary)
         actor_summary = _top_actor_summary(source, items)
         if actor_summary:
             parts.append(actor_summary)
-        lines.append(f"- {_source_label(source)}: {' | '.join(parts)}")
+        source_lines.append(f" {emoji} {_source_label(source)}: {' \u2502 '.join(parts)}")
+
+    top_voices = _top_voices_overall(non_empty_sources)
+    if top_voices:
+        source_lines.append(f" \U0001f5e3\ufe0f Top voices: {', '.join(top_voices)}")
+
+    for i, line in enumerate(source_lines):
+        prefix = "\u2514\u2500" if i == len(source_lines) - 1 else "\u251c\u2500"
+        lines.append(f"{prefix}{line}")
     lines.append("")
     return lines
+
+
+def _render_quality_nudge(quality: dict) -> list[str]:
+    """Render research coverage from quality_nudge.compute_quality_score() output."""
+    nudge_text = quality.get("nudge_text")
+    if not nudge_text:
+        return []
+    return [
+        f"## Research Coverage: {quality['score_pct']}%",
+        "",
+        nudge_text,
+        "",
+    ]
+
+
+def _render_metadata(report: schema.Report) -> list[str]:
+    rt = report.provider_runtime
+    lines = ["## Metadata", ""]
+    lines.append(f"- Reasoning: {rt.reasoning_provider} ({rt.planner_model})")
+    lines.append(f"- Reranking: {rt.rerank_model}")
+    if rt.x_search_backend:
+        lines.append(f"- X backend: {rt.x_search_backend}")
+    lines.append(f"- Generated: {report.generated_at}")
+    lines.append("")
+    return lines
+
+
+def _count_noun(source: str, count: int) -> str:
+    singular, plural = SOURCE_NOUN.get(source, ("item", "items"))
+    return f"{count} {singular if count == 1 else plural}"
 
 
 def _assess_data_freshness(report: schema.Report) -> str | None:

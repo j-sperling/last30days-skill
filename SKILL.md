@@ -205,8 +205,46 @@ After research finishes, synthesize into a user-facing answer. Do not just paste
 Always include:
 
 1. `What I learned`
-2. `Stats`
-3. A short invitation with 2-3 concrete follow-up suggestions grounded in the actual findings
+2. `Stats` (the tree-format stats block from the compact output)
+3. An invitation adapted to the QUERY_TYPE, with 2-3 specific suggestions drawn from the actual findings
+
+**Invitation templates by QUERY_TYPE:**
+
+**PROMPTING:**
+> I'm now an expert on {TOPIC} for {TARGET_TOOL}. What do you want to make? For example:
+> - [specific idea based on popular technique from research]
+> - [specific idea based on trending style/approach from research]
+> - [specific idea riffing on what people are actually creating]
+>
+> Just describe your vision and I'll write a prompt you can paste straight into {TARGET_TOOL}.
+
+**RECOMMENDATIONS:**
+> I'm now an expert on {TOPIC}. Want me to go deeper? For example:
+> - [Compare specific item A vs item B from the results]
+> - [Explain why item C is trending right now]
+> - [Help you get started with item D]
+
+**NEWS:**
+> I'm now an expert on {TOPIC}. Some things you could ask:
+> - [Specific follow-up question about the biggest story]
+> - [Question about implications of a key development]
+> - [Question about what might happen next based on current trajectory]
+
+**COMPARISON:**
+> I've compared {TOPIC_A} vs {TOPIC_B} using the latest community data. Some things you could ask:
+> - [Deep dive into {TOPIC_A} alone]
+> - [Deep dive into {TOPIC_B} alone]
+> - [Focus on a specific dimension from the comparison table]
+
+**GENERAL:**
+> I'm now an expert on {TOPIC}. Some things I can help with:
+> - [Specific question based on the most discussed aspect]
+> - [Specific creative/practical application of what you learned]
+> - [Deeper dive into a pattern or debate from the research]
+
+Every invitation MUST reference real things from the research -- show the user you absorbed the content.
+
+**WebSearch citation note:** The stats block's source names on the Web line satisfy the WebSearch tool's citation mandate. Do NOT append a separate "Sources:" section at the end of your response.
 
 For prompt-oriented requests:
 
@@ -256,7 +294,14 @@ Domain importance ranking:
 
 ### Citation rules
 
-Cite the single strongest source per point in short format: "per @handle" or "per r/subreddit". Save engagement metrics for the stats section. Use the priority order from source weighting above. The tool's value is surfacing what PEOPLE are saying, not what journalists wrote.
+Cite the single strongest source per point in short format: "per @handle" or "per r/subreddit". Use the priority order from source weighting above. The tool's value is surfacing what PEOPLE are saying, not what journalists wrote.
+
+**Anti-patterns:**
+- Do NOT chain citations: "per @x, @y, @z" is too many -- cite the single strongest source
+- Do NOT include engagement metrics in citations (save for the stats block)
+- Never paste raw URLs in the synthesis narrative
+- Lead with people, not publications: when both a web article and an X post cover the same fact, cite the X post
+- Parse @handles from the research output and include the highest-engagement ones in your synthesis
 
 ### Comparison queries
 
@@ -290,9 +335,11 @@ When users ask "best X" or "top X", extract SPECIFIC NAMES:
 ```
 Most mentioned:
 [Name] -- Nx mentions
+  Use case: [what it does / why people recommend it]
   Sources: @handle1, r/subreddit, [YouTube channel]
 
 [Name] -- Nx mentions
+  Use case: [what it does / why people recommend it]
   Sources: @handle2, r/subreddit2
 
 Notable mentions: [others with 1-2 mentions]
@@ -309,6 +356,13 @@ When the user is asking for prompts or techniques for a specific tool:
 
 If the research indicates a specific format such as JSON, structured fields, or multi-part prompting, use that format in the final prompt instead of plain prose.
 
+**Quality checklist (run before delivering a prompt):**
+- [ ] FORMAT MATCHES RESEARCH -- if research said JSON/structured/etc, prompt IS that format
+- [ ] Directly addresses what the user said they want to create
+- [ ] Uses specific patterns/keywords discovered in research
+- [ ] Ready to paste with zero edits (or minimal [PLACEHOLDERS] clearly marked)
+- [ ] Appropriate length and style for TARGET_TOOL
+
 ### Edge cases
 
 - **Empty results from a source:** State what is missing. ("No Reddit discussion found for this topic.") Do not fill the gap with training data.
@@ -318,6 +372,59 @@ If the research indicates a specific format such as JSON, structured fields, or 
 ### Follow-up conversations
 
 After research completes, treat yourself as an expert on this topic. Answer follow-ups from the research findings. Cite the specific threads, posts, and channels you found. Only run new research if the user asks about a DIFFERENT topic.
+
+### Query type classification
+
+Classify each request to choose the right follow-up invitation:
+- "best X" or "top X" -> RECOMMENDATIONS
+- "X prompts" or "write a prompt for" -> PROMPTING
+- "X news" or "what happened with" -> NEWS
+- "X vs Y" -> COMPARISON
+- everything else -> GENERAL
+
+### Follow-up invitation templates
+
+After presenting findings and stats, close with a query-type-adapted invitation. Include 2-3 specific suggestions drawn from the actual research findings.
+
+**COMPARISON:**
+> I've compared {A} vs {B} using the latest community data. You could:
+> - Deep-dive into {A} alone with /last30days {A}
+> - Deep-dive into {B} alone with /last30days {B}
+> - Focus on a specific dimension from the comparison table
+
+**RECOMMENDATIONS:**
+> I'm now an expert on {TOPIC}. Want me to go deeper?
+> - Compare specific item A vs item B from the results
+> - Explain why item C is trending right now
+> - Help you get started with item D
+
+**NEWS:**
+> I'm now an expert on {TOPIC}. Some things you could ask:
+> - [Follow-up about the biggest story]
+> - [Implications of a key development]
+> - [What might happen next based on current trajectory]
+
+**PROMPTING:**
+> I'm now an expert on {TOPIC} for {TARGET_TOOL}. What do you want to make?
+> - [Specific technique from research]
+> - [Trending approach from research]
+> - [Creative application from research]
+> Just describe your vision and I'll write a prompt you can paste in.
+
+**GENERAL:**
+> I'm now an expert on {TOPIC}. Some things I can help with:
+> - [Question about the most-discussed aspect]
+> - [Practical application of what was learned]
+> - [Deeper dive into a pattern or debate from the research]
+
+### Stats footer
+
+The CLI output includes a `## Stats` section with per-source counts and top voices. In your synthesis, present these as a summary line:
+
+> Based on: {N} Reddit threads ({sum} upvotes) + {N} X posts ({sum} likes) + {N} YouTube videos ({sum} views) + ...
+> Top voices: @handle1, r/subreddit1, ChannelName
+
+Omit any source with 0 results. Include engagement totals only for sources that have them.
 
 ## Security and permissions
 

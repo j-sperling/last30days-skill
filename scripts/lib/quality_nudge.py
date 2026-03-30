@@ -126,6 +126,16 @@ def compute_quality_score(config: dict, research_results: dict) -> dict:
     }
 
 
+def quality_from_report(config: dict, report) -> dict:
+    """Bridge v3 Report.errors_by_source to compute_quality_score."""
+    research_results = {
+        "x_error": report.errors_by_source.get("x"),
+        "youtube_error": report.errors_by_source.get("youtube"),
+        "reddit_error": report.errors_by_source.get("reddit"),
+    }
+    return compute_quality_score(config, research_results)
+
+
 def _build_nudge_text(core_missing: List[str], core_errored: List[str]) -> str:
     """Build human-readable nudge text describing what was missed.
 

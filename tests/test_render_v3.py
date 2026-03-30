@@ -94,29 +94,80 @@ class RenderV3Tests(unittest.TestCase):
         self.assertIn("# last30days v3.0.0: test topic", text)
         self.assertIn("## Ranked Evidence Clusters", text)
         self.assertIn("## Stats", text)
-        self.assertIn("Total evidence: 2 items across 2 sources", text)
-        self.assertIn("Top voices: example.com, r/LocalLLaMA", text)
-        self.assertIn("Web: 1 item | domains: example.com", text)
-        self.assertIn("Reddit: 1 item | 344pts, 119cmt | communities: r/LocalLLaMA", text)
+        # v2-style tree stats
+        self.assertIn("\u2705 All sources reported back!", text)
+        self.assertIn("\u251c\u2500", text)  # tree branch
+        self.assertIn("\u2514\u2500", text)  # tree end
+        self.assertIn("Top voices:", text)
+        self.assertIn("Web: 1 page", text)
+        self.assertIn("Reddit: 1 thread", text)
+        self.assertIn("344pts", text)
         self.assertIn("[reddit, grounding] Grounded result", text)
         self.assertIn("[344pts, 119cmt]", text)
         self.assertIn("Also on: Web", text)
         self.assertIn("Top comment: This is the strongest user reaction.", text)
         self.assertIn("Insight: Users corroborate the main claim.", text)
-        self.assertIn("## Source Coverage", text)
+        self.assertIn("## Source Status", text)
+        self.assertIn("\u2705 Reddit:", text)
+        self.assertIn("\u2705 Web:", text)
 
     def test_render_context_includes_top_clusters(self):
         text = render.render_context(sample_report())
         self.assertIn("Top clusters:", text)
         self.assertIn("Grounded result", text)
 
-    def test_render_compact_includes_source_errors_section(self):
+    def test_render_compact_includes_source_errors_in_status(self):
         report = sample_report()
         report.errors_by_source = {"x": "HTTP 400: Bad Request"}
         text = render.render_compact(report)
-        self.assertIn("## Source Errors", text)
-        self.assertIn("HTTP 400: Bad Request", text)
-        self.assertIn("X:", text)
+        self.assertIn("## Source Status", text)
+        self.assertIn("\u274c X: error -- HTTP 400: Bad Request", text)
+
+    def test_render_compact_includes_quality_nudge(self):
+        quality = {
+            "score_pct": 60,
+            "core_active": ["hn", "polymarket", "x"],
+            "core_missing": ["youtube", "reddit_comments"],
+            "core_errored": [],
+            "nudge_text": "Research quality: 3/5 core sources.\nMissing: YouTube, Reddit with comments.",
+        }
+        text = render.render_compact(sample_report(), quality=quality)
+        self.assertIn("## Research Coverage: 60%", text)
+        self.assertIn("Research quality: 3/5 core sources.", text)
+
+    def test_render_compact_no_quality_nudge_when_none(self):
+        text = render.render_compact(sample_report(), quality=None)
+        self.assertNotIn("## Research Coverage", text)
+
+    def test_render_compact_no_quality_nudge_when_perfect(self):
+        quality = {
+            "score_pct": 100,
+            "core_active": ["hn", "polymarket", "x", "youtube", "reddit_comments"],
+            "core_missing": [],
+            "core_errored": [],
+            "nudge_text": None,
+        }
+        text = render.render_compact(sample_report(), quality=quality)
+        self.assertNotIn("## Research Coverage", text)
+
+    def test_render_compact_includes_metadata(self):
+        text = render.render_compact(sample_report())
+        self.assertIn("## Metadata", text)
+        self.assertIn("Reasoning: gemini (gemini-3.1-flash-lite-preview)", text)
+        self.assertIn("Reranking: gemini-3.1-flash-lite-preview", text)
+        self.assertIn("Generated: 2026-03-16T00:00:00+00:00", text)
+
+    def test_render_compact_metadata_shows_x_backend(self):
+        report = sample_report()
+        # Replace with a runtime that includes x_search_backend
+        report.provider_runtime = schema.ProviderRuntime(
+            reasoning_provider="gemini",
+            planner_model="gemini-3.1-flash-lite-preview",
+            rerank_model="gemini-3.1-flash-lite-preview",
+            x_search_backend="bird",
+        )
+        text = render.render_compact(report)
+        self.assertIn("X backend: bird", text)
 
 
 if __name__ == "__main__":
