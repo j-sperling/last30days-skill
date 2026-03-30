@@ -118,11 +118,12 @@ WEB_ONLY_MESSAGES = [
 
 def _build_nux_message(diag: dict = None) -> str:
     """Build conversational NUX message with dynamic source status."""
+    available = set((diag or {}).get("available_sources", []))
     if diag:
-        reddit = "✓" if diag.get("openai") else "✗"
-        x = "✓" if diag.get("x_source") else "✗"
-        youtube = "✓" if diag.get("youtube") else "✗"
-        web = "✓" if diag.get("web_search_backend") else "✗"
+        reddit = "✓" if "reddit" in available else "✗"
+        x = "✓" if "x" in available else "✗"
+        youtube = "✓" if "youtube" in available else "✗"
+        web = "✓" if "grounding" in available else "✗"
         status_line = f"Reddit {reddit}, X {x}, YouTube {youtube}, Web {web}"
     else:
         status_line = "YouTube ✓, Web ✓, Reddit ✗, X ✗"
@@ -132,7 +133,7 @@ I just researched that for you. Here's what I've got right now:
 
 {status_line}
 
-You can unlock more sources with API keys or by signing in to Codex — just ask me how and I'll walk you through it. More sources means better research, but it works fine as-is.
+You can unlock more sources with API keys. `SCRAPECREATORS_API_KEY` enables Reddit, TikTok, and Instagram; xAI or Bird cookies enable X; Brave or Serper enable native grounded web search.
 
 Some examples of what you can do:
 - "last30 what are people saying about Figma"
@@ -146,8 +147,9 @@ Just start with "last30" and talk to me like normal.
 
 # Shorter promo for single missing key
 PROMO_SINGLE_KEY = {
-    "reddit": "\n💡 You can unlock Reddit with an OpenAI API key or by running `codex login` — just ask me how.\n",
-    "x": "\n💡 You can unlock X with AUTH_TOKEN/CT0 or XAI_API_KEY - just ask me how.\n",
+    "reddit": "\n💡 You can unlock Reddit, TikTok, and Instagram with SCRAPECREATORS_API_KEY.\n",
+    "x": "\n💡 You can unlock X with AUTH_TOKEN/CT0 or XAI_API_KEY.\n",
+    "web": "\n💡 You can unlock native grounded web search with BRAVE_API_KEY or SERPER_API_KEY.\n",
 }
 
 # Bird auth help (for local users with vendored Bird CLI)
@@ -425,17 +427,17 @@ def show_diagnostic_banner(diag: dict):
     """Show pre-flight source status banner when sources are missing.
 
     Args:
-        diag: Dict from env diagnostics with keys:
-            openai, xai, x_source, bird_installed, bird_authenticated,
-            bird_username, youtube, web_search_backend
+        diag: Dict from pipeline.diagnose() with available_sources, x_backend,
+            bird status, provider availability, and native web backend info.
     """
-    has_openai = diag.get("openai", False)
-    has_reddit_public = diag.get("reddit_public", False)
-    has_reddit = has_openai or has_reddit_public
-    has_x = diag.get("x_source") is not None
-    has_youtube = diag.get("youtube", False)
-    has_xiaohongshu = diag.get("xiaohongshu", False)
-    has_web = diag.get("web_search_backend") is not None
+    available_sources = set(diag.get("available_sources") or [])
+    has_reddit = "reddit" in available_sources
+    has_x = "x" in available_sources
+    has_youtube = "youtube" in available_sources
+    has_web = "grounding" in available_sources
+    has_xiaohongshu = "xiaohongshu" in available_sources
+    x_backend = diag.get("x_backend")
+    native_web_backend = diag.get("native_web_backend")
 
     # If everything is available, no banner needed
     if has_reddit and has_x and has_youtube and has_web:
@@ -449,19 +451,16 @@ def show_diagnostic_banner(diag: dict):
         lines.append(f"{Colors.DIM}│{Colors.RESET}                                                     {Colors.DIM}│{Colors.RESET}")
 
         # Reddit
-        if has_openai:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — OpenAI/Codex auth found             {Colors.DIM}│{Colors.RESET}")
-        elif has_reddit_public:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — Public Reddit search (no key)       {Colors.DIM}│{Colors.RESET}")
+        if has_reddit:
+            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — ScrapeCreators configured           {Colors.DIM}│{Colors.RESET}")
         else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ Reddit{Colors.RESET}    — No OPENAI_API_KEY                    {Colors.DIM}│{Colors.RESET}")
-            lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Add to ~/.config/last30days/.env            {Colors.DIM}│{Colors.RESET}")
+            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ Reddit{Colors.RESET}    — No SCRAPECREATORS_API_KEY           {Colors.DIM}│{Colors.RESET}")
+            lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Add to ~/.config/last30days/.env         {Colors.DIM}│{Colors.RESET}")
 
         # X/Twitter
         if has_x:
-            source = diag.get("x_source", "")
             username = diag.get("bird_username", "")
-            label = f"Bird ({username})" if source == "bird" and username else source.upper()
+            label = f"Bird ({username})" if x_backend == "bird" and username else str(x_backend or "xai").upper()
             lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ X/Twitter{Colors.RESET} — {label}                          {Colors.DIM}│{Colors.RESET}")
         else:
             lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ X/Twitter{Colors.RESET} — No X auth or fallback key        {Colors.DIM}│{Colors.RESET}")
@@ -485,10 +484,10 @@ def show_diagnostic_banner(diag: dict):
 
         # Web
         if has_web:
-            backend = diag.get("web_search_backend", "")
+            backend = native_web_backend or "native"
             lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Web{Colors.RESET}       — {backend} API                       {Colors.DIM}│{Colors.RESET}")
         else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.YELLOW}⚡ Web{Colors.RESET}       — Using assistant's search tool       {Colors.DIM}│{Colors.RESET}")
+            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.YELLOW}⚡ Web{Colors.RESET}       — Add BRAVE_API_KEY or SERPER_API_KEY {Colors.DIM}│{Colors.RESET}")
 
         lines.append(f"{Colors.DIM}│{Colors.RESET}                                                     {Colors.DIM}│{Colors.RESET}")
         lines.append(f"{Colors.DIM}│{Colors.RESET}  Config: {Colors.BOLD}~/.config/last30days/.env{Colors.RESET}                  {Colors.DIM}│{Colors.RESET}")
@@ -499,12 +498,10 @@ def show_diagnostic_banner(diag: dict):
         lines.append("│ /last30days v3.0.0 - Source Status                 │")
         lines.append("│                                                     │")
 
-        if has_openai:
-            lines.append("│  ✅ Reddit    — OpenAI/Codex auth found             │")
-        elif has_reddit_public:
-            lines.append("│  ✅ Reddit    — Public Reddit search (no key)       │")
+        if has_reddit:
+            lines.append("│  ✅ Reddit    — ScrapeCreators configured           │")
         else:
-            lines.append("│  ❌ Reddit    — No OPENAI_API_KEY                    │")
+            lines.append("│  ❌ Reddit    — No SCRAPECREATORS_API_KEY           │")
             lines.append("│     └─ Add to ~/.config/last30days/.env            │")
 
         if has_x:
@@ -528,9 +525,10 @@ def show_diagnostic_banner(diag: dict):
             lines.append("│  ⚡ Xiaohongshu — API not connected/logged in       │")
 
         if has_web:
-            lines.append("│  ✅ Web       — API search available                │")
+            backend = native_web_backend or "native"
+            lines.append(f"│  ✅ Web       — {backend} API available{' ' * max(0, 13 - len(backend))}│")
         else:
-            lines.append("│  ⚡ Web       — Using assistant's search tool       │")
+            lines.append("│  ⚡ Web       — Add BRAVE_API_KEY or SERPER_API_KEY │")
 
         lines.append("│                                                     │")
         lines.append("│  Config: ~/.config/last30days/.env                  │")

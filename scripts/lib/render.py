@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from . import dates, schema
 
 SOURCE_LABELS = {
@@ -55,6 +57,7 @@ def render_compact(report: schema.Report, cluster_limit: int = 8) -> str:
             lines.extend(_render_candidate(candidate, prefix=f"{rep_index}."))
         lines.append("")
 
+    lines.extend(_render_stats(report))
     lines.extend(_render_source_coverage(report))
     return "\n".join(lines).strip() + "\n"
 
@@ -139,6 +142,42 @@ def _render_source_coverage(report: schema.Report) -> list[str]:
         lines.append("")
         for source, error in sorted(report.errors_by_source.items()):
             lines.append(f"- {_source_label(source)}: {error}")
+    return lines
+
+
+def _render_stats(report: schema.Report) -> list[str]:
+    lines = [
+        "## Stats",
+        "",
+    ]
+    non_empty_sources = {
+        source: items
+        for source, items in sorted(report.items_by_source.items())
+        if items
+    }
+    total_items = sum(len(items) for items in non_empty_sources.values())
+    if not non_empty_sources:
+        lines.append("- No usable source metrics available.")
+        lines.append("")
+        return lines
+
+    lines.append(
+        f"- Total evidence: {total_items} item{'s' if total_items != 1 else ''} across "
+        f"{len(non_empty_sources)} source{'s' if len(non_empty_sources) != 1 else ''}"
+    )
+    top_voices = _top_voices_overall(non_empty_sources)
+    if top_voices:
+        lines.append(f"- Top voices: {', '.join(top_voices)}")
+    for source, items in non_empty_sources.items():
+        parts = [f"{len(items)} item{'s' if len(items) != 1 else ''}"]
+        engagement_summary = _aggregate_engagement(source, items)
+        if engagement_summary:
+            parts.append(engagement_summary)
+        actor_summary = _top_actor_summary(source, items)
+        if actor_summary:
+            parts.append(actor_summary)
+        lines.append(f"- {_source_label(source)}: {' | '.join(parts)}")
+    lines.append("")
     return lines
 
 
@@ -234,6 +273,72 @@ def _format_number(value: object) -> str:
     if numeric.is_integer():
         return str(int(numeric))
     return f"{numeric:.1f}"
+
+
+def _aggregate_engagement(source: str, items: list[schema.SourceItem]) -> str | None:
+    fields = ENGAGEMENT_DISPLAY.get(source)
+    if not fields:
+        return None
+    totals: list[tuple[float | int | None, str]] = []
+    for field, label in fields:
+        total = 0
+        found = False
+        for item in items:
+            value = item.engagement.get(field)
+            if value in (None, ""):
+                continue
+            found = True
+            total += value
+        totals.append((total if found else None, label))
+    return _fmt_pairs(totals) or None
+
+
+def _top_actor_summary(source: str, items: list[schema.SourceItem]) -> str | None:
+    actors = _top_actors_for_source(source, items)
+    if not actors:
+        return None
+    label = {
+        "reddit": "communities",
+        "grounding": "domains",
+        "youtube": "channels",
+        "hackernews": "domains",
+    }.get(source, "voices")
+    return f"{label}: {', '.join(actors)}"
+
+
+def _top_actors_for_source(source: str, items: list[schema.SourceItem], limit: int = 3) -> list[str]:
+    counts: Counter[str] = Counter()
+    for item in items:
+        actor = _stats_actor(item)
+        if actor:
+            counts[actor] += 1
+    return [actor for actor, _ in counts.most_common(limit)]
+
+
+def _top_voices_overall(items_by_source: dict[str, list[schema.SourceItem]], limit: int = 5) -> list[str]:
+    counts: Counter[str] = Counter()
+    for items in items_by_source.values():
+        for item in items:
+            actor = _stats_actor(item)
+            if actor:
+                counts[actor] += 1
+    return [actor for actor, _ in counts.most_common(limit)]
+
+
+def _stats_actor(item: schema.SourceItem) -> str | None:
+    if item.source == "reddit" and item.container:
+        return f"r/{item.container}"
+    if item.source in {"x", "bluesky", "truthsocial"} and item.author:
+        return f"@{item.author.lstrip('@')}"
+    if item.source == "grounding" and item.container:
+        return item.container
+    if item.source == "youtube" and item.author:
+        return item.author
+    if item.container and item.container != "Polymarket":
+        return item.container
+    if item.author:
+        return item.author
+    return None
 
 
 def _format_corroboration(candidate: schema.Candidate) -> str | None:

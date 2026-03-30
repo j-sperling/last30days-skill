@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """last30days v3.0.0 CLI."""
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from lib import env, pipeline, render, schema
+from lib import env, pipeline, render, schema, ui
 
 _child_pids: set[int] = set()
 _child_pids_lock = threading.Lock()
@@ -128,6 +129,39 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _missing_sources_for_promo(diag: dict[str, object]) -> str | None:
+    available = set(diag.get("available_sources") or [])
+    missing = []
+    if "reddit" not in available:
+        missing.append("reddit")
+    if "x" not in available:
+        missing.append("x")
+    if "grounding" not in available:
+        missing.append("web")
+    if not missing:
+        return None
+    if "reddit" in missing and "x" in missing:
+        return "both"
+    return missing[0]
+
+
+def _show_runtime_ui(report: schema.Report, progress: ui.ProgressDisplay, diag: dict[str, object]) -> None:
+    counts = {source: len(items) for source, items in report.items_by_source.items()}
+    progress.end_processing()
+    progress.show_complete(
+        reddit_count=counts.get("reddit", 0),
+        x_count=counts.get("x", 0),
+        youtube_count=counts.get("youtube", 0),
+        hn_count=counts.get("hackernews", 0),
+        pm_count=counts.get("polymarket", 0),
+        tiktok_count=counts.get("tiktok", 0),
+        ig_count=counts.get("instagram", 0),
+    )
+    promo = _missing_sources_for_promo(diag)
+    if promo:
+        progress.show_promo(promo, diag=diag)
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -136,9 +170,10 @@ def main() -> int:
 
     config = env.get_config()
     requested_sources = parse_search_flag(args.search) if args.search else None
+    diag = pipeline.diagnose(config, requested_sources)
 
     if args.diagnose:
-        print(json.dumps(pipeline.diagnose(config, requested_sources), indent=2, sort_keys=True))
+        print(json.dumps(diag, indent=2, sort_keys=True))
         return 0
 
     topic = " ".join(args.topic).strip()
@@ -146,16 +181,26 @@ def main() -> int:
         parser.print_usage(sys.stderr)
         return 2
 
+    ui.show_diagnostic_banner(diag)
+    progress = ui.ProgressDisplay(topic, show_banner=True)
+    progress.start_processing()
+
     depth = "deep" if args.deep else "quick" if args.quick else "default"
-    report = pipeline.run(
-        topic=topic,
-        config=config,
-        depth=depth,
-        requested_sources=requested_sources,
-        mock=args.mock,
-        x_handle=args.x_handle,
-        web_backend=args.web_backend,
-    )
+    try:
+        report = pipeline.run(
+            topic=topic,
+            config=config,
+            depth=depth,
+            requested_sources=requested_sources,
+            mock=args.mock,
+            x_handle=args.x_handle,
+            web_backend=args.web_backend,
+        )
+    except Exception as exc:
+        progress.end_processing()
+        progress.show_error(str(exc))
+        raise
+    _show_runtime_ui(report, progress, diag)
     if args.store:
         counts = persist_report(report)
         sys.stderr.write(
