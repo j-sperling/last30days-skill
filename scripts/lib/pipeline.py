@@ -25,6 +25,7 @@ from . import (
     providers,
     query,
     reddit,
+    reddit_public,
     rerank,
     schema,
     signals,
@@ -84,6 +85,9 @@ def available_sources(config: dict[str, Any], requested_sources: list[str] | Non
     available: list[str] = []
     if config.get("SCRAPECREATORS_API_KEY"):
         available.extend(["reddit", "tiktok", "instagram"])
+    else:
+        # reddit_public needs no API key
+        available.append("reddit")
     if env.get_x_source(config):
         available.append("x")
     if which("yt-dlp"):
@@ -93,7 +97,7 @@ def available_sources(config: dict[str, Any], requested_sources: list[str] | Non
         available.append("bluesky")
     if env.is_truthsocial_available(config):
         available.append("truthsocial")
-    if config.get("BRAVE_API_KEY") or config.get("SERPER_API_KEY"):
+    if config.get("BRAVE_API_KEY") or config.get("EXA_API_KEY") or config.get("SERPER_API_KEY"):
         available.append("grounding")
     if requested_sources and "xiaohongshu" in requested_sources and env.is_xiaohongshu_available(config):
         available.append("xiaohongshu")
@@ -107,6 +111,8 @@ def diagnose(config: dict[str, Any], requested_sources: list[str] | None = None)
     native_web_backend = None
     if config.get("BRAVE_API_KEY"):
         native_web_backend = "brave"
+    elif config.get("EXA_API_KEY"):
+        native_web_backend = "exa"
     elif config.get("SERPER_API_KEY"):
         native_web_backend = "serper"
     providers_status = {
@@ -152,7 +158,7 @@ def run(
             available = [source for source in available if source in requested_sources]
     if web_backend == "none":
         available = [s for s in available if s != "grounding"]
-    elif web_backend in ("brave", "serper") and "grounding" not in available:
+    elif web_backend in ("brave", "exa", "serper") and "grounding" not in available:
         available.append("grounding")
     if not available:
         raise RuntimeError("No sources are available for this run.")
@@ -578,14 +584,18 @@ def _retrieve_stream(
         return grounding.web_search(
             subquery.search_query, date_range, config, backend=web_backend)
     if source == "reddit":
-        result = reddit.search_and_enrich(
-            subquery.search_query,
-            from_date,
-            to_date,
-            depth=depth,
-            token=config.get("SCRAPECREATORS_API_KEY"),
-        )
-        return reddit.parse_reddit_response(result), {}
+        if config.get("SCRAPECREATORS_API_KEY"):
+            result = reddit.search_and_enrich(
+                subquery.search_query,
+                from_date,
+                to_date,
+                depth=depth,
+                token=config.get("SCRAPECREATORS_API_KEY"),
+            )
+            return reddit.parse_reddit_response(result), {}
+        return reddit_public.search_reddit_public(
+            subquery.search_query, from_date, to_date, depth=depth,
+        ), {}
     if source == "x":
         backend = runtime.x_search_backend or env.get_x_source(config)
         if backend == "bird":
