@@ -19,5 +19,8 @@ __pycache__/
 htmlcov/
 mise.toml
 
+# Side-by-side testing (local dev only)
+skills/last30days-v3/
+
 # Build artifacts
 dist/

@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import importlib.util
 import json
 import sys
@@ -105,6 +106,31 @@ class SkillSurfaceV3Tests(unittest.TestCase):
         env_vars = {setting["envVar"] for setting in payload["settings"]}
         self.assertIn("BRAVE_API_KEY", env_vars)
         self.assertIn("SERPER_API_KEY", env_vars)
+
+    def test_root_skill_restores_interactive_prompt_flow(self):
+        root_skill = (REPO_ROOT / "SKILL.md").read_text()
+        self.assertIn("allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch", root_skill)
+        self.assertIn("Parsed intent:", root_skill)
+        self.assertIn("QUERY_TYPE", root_skill)
+        self.assertIn('TARGET_TOOL or "unknown"', root_skill)
+        self.assertIn("Research typically takes 2-8 minutes. Starting now.", root_skill)
+        self.assertIn("## Web fallback for plugin hosts", root_skill)
+        self.assertIn("copy-paste-ready prompt", root_skill)
+        self.assertIn("## Display contract", root_skill)
+
+    def test_openclaw_one_shot_reference_restores_guided_persistent_flow(self):
+        open_skill = (REPO_ROOT / "variants" / "open" / "SKILL.md").read_text()
+        research_ref = (REPO_ROOT / "variants" / "open" / "references" / "research.md").read_text()
+        self.assertIn("allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch", open_skill)
+        self.assertIn("Update it after meaningful", open_skill)
+        self.assertIn("Parsed intent:", research_ref)
+        self.assertIn('WebSearch("{TOPIC} X twitter handle site:x.com")', research_ref)
+        self.assertIn('--emit=compact --store', research_ref)
+        self.assertIn("If native grounded web retrieval is unavailable", research_ref)
+        self.assertIn("What I learned", research_ref)
+        self.assertIn("Stats", research_ref)
+        self.assertIn("AskUserQuestion", research_ref)
+        self.assertIn("stay in expert mode", research_ref)
 
 
 if __name__ == "__main__":

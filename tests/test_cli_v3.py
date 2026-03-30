@@ -1,9 +1,12 @@
+# ruff: noqa: E402
 import json
+import io
 import tempfile
 import subprocess
 import sys
 import types
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -74,6 +77,19 @@ class CliV3Tests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli.parse_search_flag(" , ")
 
+    def test_missing_sources_for_promo_prefers_reddit_x_then_web(self):
+        self.assertEqual(
+            "both",
+            cli._missing_sources_for_promo({"available_sources": ["youtube"]}),
+        )
+        self.assertEqual(
+            "web",
+            cli._missing_sources_for_promo({"available_sources": ["reddit", "x"]}),
+        )
+        self.assertIsNone(
+            cli._missing_sources_for_promo({"available_sources": ["reddit", "x", "grounding"]}),
+        )
+
     def test_slugify_and_emit_output_cover_supported_modes(self):
         report = self.make_report()
         self.assertEqual("openclaw-vs-nanoclaw", cli.slugify(report.topic))
@@ -133,6 +149,38 @@ class CliV3Tests(unittest.TestCase):
         _, kwargs = failure_store.update_run.call_args
         self.assertEqual("failed", kwargs["status"])
         self.assertIn("boom", kwargs["error_message"])
+
+    def test_main_wires_banner_and_progress_display(self):
+        report = self.make_report()
+        diag = {
+            "available_sources": ["grounding", "youtube"],
+            "providers": {"google": True, "openai": False, "xai": False},
+            "x_backend": None,
+            "bird_installed": True,
+            "bird_authenticated": False,
+            "bird_username": None,
+            "native_web_backend": "brave",
+        }
+        fake_progress = mock.Mock()
+        with mock.patch.object(cli.env, "get_config", return_value={}), \
+             mock.patch.object(cli.pipeline, "diagnose", return_value=diag), \
+             mock.patch.object(cli.pipeline, "run", return_value=report), \
+             mock.patch.object(cli.ui, "show_diagnostic_banner") as banner, \
+             mock.patch.object(cli.ui, "ProgressDisplay", return_value=fake_progress) as progress_cls, \
+             mock.patch.object(cli, "emit_output", return_value="# rendered"), \
+             mock.patch.object(sys, "argv", ["last30days.py", "test", "topic"]):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                rc = cli.main()
+        self.assertEqual(0, rc)
+        banner.assert_called_once_with(diag)
+        progress_cls.assert_called_once_with("test topic", show_banner=True)
+        fake_progress.start_processing.assert_called_once()
+        fake_progress.end_processing.assert_called_once()
+        fake_progress.show_complete.assert_called_once()
+        fake_progress.show_promo.assert_called_once_with("both", diag=diag)
+        self.assertIn("# rendered", stdout.getvalue())
 
 
 if __name__ == "__main__":
