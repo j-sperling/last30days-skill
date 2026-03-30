@@ -208,6 +208,16 @@ def main() -> int:
         )
         sys.stderr.flush()
 
+    # Show quality nudge if applicable
+    try:
+        from lib import quality_nudge
+        quality = quality_nudge.compute_quality_score(config, {})
+        if quality.get("nudge_text"):
+            sys.stderr.write(f"\n{quality['nudge_text']}\n")
+            sys.stderr.flush()
+    except Exception:
+        pass
+
     rendered = emit_output(report, args.emit)
     if args.save_dir:
         save_path = save_output(report, args.emit, args.save_dir)
