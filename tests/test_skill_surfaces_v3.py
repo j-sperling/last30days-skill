@@ -103,15 +103,49 @@ class SkillSurfaceV3Tests(unittest.TestCase):
 
     def test_gemini_extension_exposes_current_web_backend_settings(self):
         payload = json.loads((REPO_ROOT / "gemini-extension.json").read_text())
-        env_vars = {setting["envVar"] for setting in payload["settings"]}
-        self.assertIn("BRAVE_API_KEY", env_vars)
-        self.assertIn("SERPER_API_KEY", env_vars)
+        settings = payload["settings"]
+        env_vars = [setting["envVar"] for setting in settings]
+        self.assertEqual(
+            [
+                "SCRAPECREATORS_API_KEY",
+                "AUTH_TOKEN",
+                "CT0",
+                "BSKY_HANDLE",
+                "BSKY_APP_PASSWORD",
+                "TRUTHSOCIAL_TOKEN",
+            ],
+            env_vars[:6],
+        )
+        self.assertLess(env_vars.index("BRAVE_API_KEY"), env_vars.index("GOOGLE_API_KEY"))
+        self.assertLess(env_vars.index("SERPER_API_KEY"), env_vars.index("GOOGLE_API_KEY"))
+        self.assertLess(env_vars.index("GOOGLE_API_KEY"), env_vars.index("LAST30DAYS_REASONING_PROVIDER"))
+        descriptions = {setting["envVar"]: setting["description"] for setting in settings}
+        self.assertIn("Optional Gemini planner and reranker", descriptions["GOOGLE_API_KEY"])
+        self.assertNotIn("required", descriptions["GOOGLE_API_KEY"].lower())
+        self.assertIn("Advanced override", descriptions["LAST30DAYS_PLANNER_MODEL"])
+
+    def test_readme_frontmatter_uses_v3_free_first_story(self):
+        readme = (REPO_ROOT / "README.md").read_text()
+        active = readme.split("## Historical release notes")[0]
+        self.assertIn("# /last30days v3.0.0", readme)
+        self.assertIn("what people are actually saying right now", active)
+        self.assertIn("/last30days setup", active)
+        self.assertIn("If you add one paid key, make it", active)
+        self.assertIn("Brave or Serper", active)
+        self.assertNotIn("PARALLEL_API_KEY", active)
+        self.assertNotIn("OPENROUTER_API_KEY", active)
+        self.assertIn("## Historical release notes", readme)
 
     def test_root_skill_restores_interactive_prompt_flow(self):
         root_skill = (REPO_ROOT / "SKILL.md").read_text()
         self.assertIn("allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch", root_skill)
-        self.assertIn("synthesizing what people are actually saying", root_skill)
+        self.assertIn("what people are actually saying right now", root_skill)
+        self.assertIn("works out of the box", root_skill)
+        self.assertIn("`/last30days setup` is the recommended first upgrade path", root_skill)
         self.assertIn("QUERY_TYPE", root_skill)
+        self.assertIn("Parsed intent:", root_skill)
+        self.assertIn("- TOPIC = {TOPIC}", root_skill)
+        self.assertIn('- TARGET_TOOL = {TARGET_TOOL or "unknown"}', root_skill)
         self.assertIn("Research typically takes 2-8 minutes. Starting now.", root_skill)
         self.assertIn("## Web fallback for plugin hosts", root_skill)
         self.assertIn('python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose', root_skill)
@@ -119,12 +153,19 @@ class SkillSurfaceV3Tests(unittest.TestCase):
         self.assertIn('`"grounding"` appears in `available_sources`', root_skill)
         self.assertIn("copy-paste-ready prompt", root_skill)
         self.assertIn("## Display contract", root_skill)
+        self.assertNotIn("primaryEnv:", root_skill)
+        self.assertNotIn("The runtime is a single v3 pipeline", root_skill)
 
     def test_openclaw_one_shot_reference_restores_guided_persistent_flow(self):
         open_skill = (REPO_ROOT / "variants" / "open" / "SKILL.md").read_text()
         research_ref = (REPO_ROOT / "variants" / "open" / "references" / "research.md").read_text()
         self.assertIn("allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch", open_skill)
+        self.assertIn("last30days to remember what it found", open_skill)
+        self.assertIn("watchlist topics", open_skill)
+        self.assertIn("Brave and Serper are optional native web upgrades", open_skill)
         self.assertIn("Update it after meaningful", open_skill)
+        self.assertNotIn("This variant keeps the v3 pipeline", open_skill)
+        self.assertNotIn("One reasoning provider is required", open_skill)
         self.assertIn("Parsed intent:", research_ref)
         self.assertIn('WebSearch("{TOPIC} X twitter handle site:x.com")', research_ref)
         self.assertIn('--emit=compact --store', research_ref)

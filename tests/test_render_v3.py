@@ -15,7 +15,7 @@ def sample_report() -> schema.Report:
         body="A grounded body with useful detail.",
         url="https://example.com",
         container="example.com",
-        published_at="2026-03-15",
+        published_at="2099-03-15",
         date_confidence="high",
         snippet="A grounded snippet about the topic.",
         metadata={},
@@ -27,7 +27,7 @@ def sample_report() -> schema.Report:
         body="Reddit discussion body.",
         url="https://example.com",
         container="LocalLLaMA",
-        published_at="2026-03-14",
+        published_at="2099-03-14",
         date_confidence="high",
         engagement={"score": 344, "num_comments": 119, "upvote_ratio": 0.92},
         metadata={
@@ -65,9 +65,9 @@ def sample_report() -> schema.Report:
     )
     return schema.Report(
         topic="test topic",
-        range_from="2026-02-14",
-        range_to="2026-03-16",
-        generated_at="2026-03-16T00:00:00+00:00",
+        range_from="2099-02-14",
+        range_to="2099-03-16",
+        generated_at="2099-03-16T00:00:00+00:00",
         provider_runtime=schema.ProviderRuntime(
             reasoning_provider="gemini",
             planner_model="gemini-3.1-flash-lite-preview",
@@ -89,41 +89,39 @@ def sample_report() -> schema.Report:
 
 
 class RenderV3Tests(unittest.TestCase):
-    def test_render_compact_includes_cluster_first_sections(self):
+    def test_render_compact_reads_like_briefing_not_ranking_dump(self):
         text = render.render_compact(sample_report())
-        self.assertIn("# last30days v3.0.0: test topic", text)
-        self.assertIn("## Ranked Evidence Clusters", text)
+        self.assertIn("# last30days: test topic", text)
+        self.assertIn("## What I learned", text)
         self.assertIn("## Stats", text)
-        # v2-style tree stats
-        self.assertIn("\u2705 All sources reported back!", text)
-        self.assertIn("\u251c\u2500", text)  # tree branch
-        self.assertIn("\u2514\u2500", text)  # tree end
+        self.assertIn("### Grounded result", text)
         self.assertIn("Top voices:", text)
-        self.assertIn("Web: 1 page", text)
-        self.assertIn("Reddit: 1 thread", text)
+        self.assertIn("Web: 1 page; domains: example.com", text)
+        self.assertIn("Reddit: 1 thread; 344pts, 119cmt; communities: r/LocalLLaMA", text)
         self.assertIn("344pts", text)
-        self.assertIn("[reddit, grounding] Grounded result", text)
-        self.assertIn("[344pts, 119cmt]", text)
-        self.assertIn("Also on: Web", text)
+        self.assertIn("Also seen in: Web", text)
         self.assertIn("Top comment: This is the strongest user reaction.", text)
         self.assertIn("Insight: Users corroborate the main claim.", text)
-        self.assertIn("## Source Status", text)
-        self.assertIn("\u2705 Reddit:", text)
-        self.assertIn("\u2705 Web:", text)
+        self.assertNotIn("## Ranked Evidence Clusters", text)
+        self.assertNotIn("score 90", text)
+        self.assertNotIn("score:90", text)
+        self.assertNotIn("Uncertainty:", text)
+        self.assertNotIn("## Source Status", text)
+        self.assertNotIn("## Metadata", text)
 
     def test_render_context_includes_top_clusters(self):
         text = render.render_context(sample_report())
         self.assertIn("Top clusters:", text)
         self.assertIn("Grounded result", text)
 
-    def test_render_compact_includes_source_errors_in_status(self):
+    def test_render_compact_includes_source_errors_in_coverage_notes(self):
         report = sample_report()
         report.errors_by_source = {"x": "HTTP 400: Bad Request"}
         text = render.render_compact(report)
-        self.assertIn("## Source Status", text)
-        self.assertIn("\u274c X: error -- HTTP 400: Bad Request", text)
+        self.assertIn("## Coverage notes", text)
+        self.assertIn("X had an error: HTTP 400: Bad Request", text)
 
-    def test_render_compact_includes_quality_nudge(self):
+    def test_render_compact_includes_quality_nudge_in_coverage_notes(self):
         quality = {
             "score_pct": 60,
             "core_active": ["hn", "polymarket", "x"],
@@ -132,14 +130,44 @@ class RenderV3Tests(unittest.TestCase):
             "nudge_text": "Research quality: 3/5 core sources.\nMissing: YouTube, Reddit with comments.",
         }
         text = render.render_compact(sample_report(), quality=quality)
-        self.assertIn("## Research Coverage: 60%", text)
+        self.assertIn("## Coverage notes", text)
         self.assertIn("Research quality: 3/5 core sources.", text)
-
-    def test_render_compact_no_quality_nudge_when_none(self):
-        text = render.render_compact(sample_report(), quality=None)
+        self.assertIn("Missing: YouTube, Reddit with comments.", text)
         self.assertNotIn("## Research Coverage", text)
 
-    def test_render_compact_no_quality_nudge_when_perfect(self):
+    def test_render_compact_has_no_coverage_notes_when_clean(self):
+        report = sample_report()
+        report.items_by_source["grounding"].append(
+            schema.SourceItem(
+                item_id="i3",
+                source="grounding",
+                title="Another grounded result",
+                body="Second grounded body.",
+                url="https://example.org",
+                container="example.org",
+                published_at="2099-03-13",
+                date_confidence="high",
+                metadata={},
+            )
+        )
+        text = render.render_compact(report, quality=None)
+        self.assertNotIn("## Coverage notes", text)
+
+    def test_render_compact_has_no_coverage_notes_when_quality_is_perfect(self):
+        report = sample_report()
+        report.items_by_source["grounding"].append(
+            schema.SourceItem(
+                item_id="i3",
+                source="grounding",
+                title="Another grounded result",
+                body="Second grounded body.",
+                url="https://example.org",
+                container="example.org",
+                published_at="2099-03-13",
+                date_confidence="high",
+                metadata={},
+            )
+        )
         quality = {
             "score_pct": 100,
             "core_active": ["hn", "polymarket", "x", "youtube", "reddit_comments"],
@@ -147,27 +175,66 @@ class RenderV3Tests(unittest.TestCase):
             "core_errored": [],
             "nudge_text": None,
         }
-        text = render.render_compact(sample_report(), quality=quality)
-        self.assertNotIn("## Research Coverage", text)
+        text = render.render_compact(report, quality=quality)
+        self.assertNotIn("## Coverage notes", text)
 
-    def test_render_compact_includes_metadata(self):
-        text = render.render_compact(sample_report())
-        self.assertIn("## Metadata", text)
-        self.assertIn("Reasoning: gemini (gemini-3.1-flash-lite-preview)", text)
-        self.assertIn("Reranking: gemini-3.1-flash-lite-preview", text)
-        self.assertIn("Generated: 2026-03-16T00:00:00+00:00", text)
-
-    def test_render_compact_metadata_shows_x_backend(self):
+    def test_render_compact_handles_empty_reports(self):
         report = sample_report()
-        # Replace with a runtime that includes x_search_backend
-        report.provider_runtime = schema.ProviderRuntime(
-            reasoning_provider="gemini",
-            planner_model="gemini-3.1-flash-lite-preview",
-            rerank_model="gemini-3.1-flash-lite-preview",
-            x_search_backend="bird",
-        )
+        report.clusters = []
+        report.ranked_candidates = []
+        report.items_by_source = {}
         text = render.render_compact(report)
-        self.assertIn("X backend: bird", text)
+        self.assertIn("I did not find enough usable recent evidence to support a confident answer yet.", text)
+        self.assertIn("No usable source metrics were available for this run.", text)
+        self.assertIn("## Coverage notes", text)
+
+    def test_render_compact_keeps_transcript_highlights(self):
+        report = sample_report()
+        youtube_item = schema.SourceItem(
+            item_id="yt1",
+            source="youtube",
+            title="Video result",
+            body="Video discussion",
+            url="https://youtube.com/watch?v=123",
+            author="AI Channel",
+            published_at="2099-03-13",
+            date_confidence="high",
+            metadata={"transcript_highlights": ["This workflow is winning because it stays grounded in user examples."]},
+        )
+        youtube_candidate = schema.Candidate(
+            candidate_id="c2",
+            item_id="yt1",
+            source="youtube",
+            title="Video result",
+            url="https://youtube.com/watch?v=123",
+            snippet="Video snippet",
+            subquery_labels=["primary"],
+            native_ranks={"primary:youtube": 1},
+            local_relevance=0.8,
+            freshness=85,
+            engagement=40,
+            source_quality=1.0,
+            rrf_score=0.01,
+            rerank_score=88,
+            final_score=84,
+            explanation="useful walkthrough",
+            sources=["youtube"],
+            source_items=[youtube_item],
+        )
+        report.clusters.append(
+            schema.Cluster(
+                cluster_id="cluster-2",
+                title="Video walkthroughs",
+                candidate_ids=["c2"],
+                representative_ids=["c2"],
+                sources=["youtube"],
+                score=84,
+            )
+        )
+        report.ranked_candidates.append(youtube_candidate)
+        report.items_by_source["youtube"] = [youtube_item]
+        text = render.render_compact(report)
+        self.assertIn('Transcript highlight: "This workflow is winning because it stays grounded in user examples."', text)
 
 
 if __name__ == "__main__":

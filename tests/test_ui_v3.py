@@ -37,7 +37,8 @@ class UiV3Tests(unittest.TestCase):
             {"available_sources": ["reddit", "youtube", "grounding"]}
         )
         self.assertIn("Reddit ✓, X ✗, YouTube ✓, Web ✓", text)
-        self.assertIn("works fine as-is", text)
+        self.assertIn("works out of the box", text)
+        self.assertIn("last30days setup", text)
         self.assertIn("scrapecreators.com", text)
 
     def test_show_complete_uses_actual_sources_for_source_restricted_runs(self):
@@ -53,6 +54,34 @@ class UiV3Tests(unittest.TestCase):
         self.assertIn("Web: 2 results", output)
         self.assertNotIn("Reddit:", output)
         self.assertNotIn("X:", output)
+
+    def test_show_complete_omits_zero_sources_from_mixed_runs(self):
+        with mock.patch.object(ui, "IS_TTY", False):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                progress = ui.ProgressDisplay("test topic", show_banner=False)
+                progress.show_complete(
+                    source_counts={"grounding": 2, "reddit": 0, "x": 0},
+                    display_sources=["grounding", "reddit", "x"],
+                )
+        output = stderr.getvalue()
+        self.assertIn("Web: 2 results", output)
+        self.assertNotIn("Reddit: 0", output)
+        self.assertNotIn("X: 0", output)
+
+    def test_show_complete_uses_no_results_message_when_everything_is_zero(self):
+        with mock.patch.object(ui, "IS_TTY", False):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                progress = ui.ProgressDisplay("test topic", show_banner=False)
+                progress.show_complete(
+                    source_counts={"grounding": 0, "reddit": 0},
+                    display_sources=["grounding", "reddit"],
+                )
+        output = stderr.getvalue()
+        self.assertIn("no usable recent results", output.lower())
+        self.assertNotIn("Reddit: 0", output)
+        self.assertNotIn("Web: 0", output)
 
     def test_show_complete_supports_newer_sources(self):
         with mock.patch.object(ui, "IS_TTY", False):

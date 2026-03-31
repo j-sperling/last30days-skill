@@ -1,7 +1,7 @@
 ---
 name: last30days
 version: "3.0.0"
-description: "Persistent last-30-days research for OpenClaw: one-shot research, watchlists, briefings, and history on top of the v3 engine."
+description: "Persistent last-30-days research for OpenClaw: one-shot research, watchlists, briefings, and history."
 argument-hint: 'last30 watch "competitors", last30 briefing, last30 history "AI video", last30 codex vs claude code'
 allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch
 homepage: https://github.com/mvanhorn/last30days-skill
@@ -45,25 +45,21 @@ metadata:
 
 # last30days v3.0.0 (Open Variant)
 
-Use this wrapper when you want persistent recency research instead of one-shot answers.
+Use this wrapper when you want last30days to remember what it found.
 
-This variant keeps the v3 pipeline:
-
-1. query planning
-2. per-(subquery, source) retrieval
-3. normalization and dedupe
-4. snippet extraction
-5. weighted reciprocal rank fusion
-6. single-score reranking
-7. clustering
-8. cluster-first rendering
-
-It adds persistent workflows on top:
+It adds persistent workflows on top of normal one-shot research:
 
 - one-shot research that can store findings
 - watchlist topics
 - briefings
 - history queries
+
+Keep the product story the same as the main skill:
+
+- it works out of the box
+- X cookies and `yt-dlp` are the best free upgrades
+- ScrapeCreators is the biggest optional paid upgrade
+- Brave and Serper are optional native web upgrades
 
 ## Setup: resolve the skill root
 
@@ -94,11 +90,13 @@ At session start, read `${SKILL_ROOT}/variants/open/context.md`. Update it after
 
 ## Runtime expectations
 
-- One reasoning provider is required: `GOOGLE_API_KEY` for Gemini, `OPENAI_API_KEY` for OpenAI, or `XAI_API_KEY` for xAI.
-- `BRAVE_API_KEY` enables Brave web search (recommended). `SERPER_API_KEY` is the web fallback.
+- The research engine works out of the box with Reddit public threads, Hacker News, and Polymarket.
+- `last30days setup` is still the recommended first upgrade path when available in the host environment.
+- `BRAVE_API_KEY` enables Brave web search. `SERPER_API_KEY` is the native web fallback.
+- Reasoning-provider keys are optional runtime upgrades for planning and reranking, not the first thing to ask users for.
 - OpenClaw can supply env vars through `~/.openclaw/.env` or `~/.openclaw/openclaw.json`.
 - `last30days` also reads process env, repo `.claude/last30days.env`, and `~/.config/last30days/.env`.
-- This open variant uses the same Brave/Serper web retrieval path as the main v3 pipeline.
+- This open variant uses the same Brave/Serper web retrieval path as the main skill.
 
 ## Command routing
 

@@ -28,7 +28,6 @@ metadata:
       bins:
         - node
         - python3
-    primaryEnv: GOOGLE_API_KEY
     files:
       - "scripts/*"
     homepage: https://github.com/mvanhorn/last30days-skill
@@ -57,18 +56,17 @@ metadata:
 
 # last30days v3.0.0
 
-Use `last30days` when the user wants recent, cross-source evidence from the last 30 days.
+Use `last30days` when the user wants to know what people are actually saying right now.
 
-The runtime is a single v3 pipeline:
+This skill is for prompt research, recommendations, trend checks, product research, comparisons, and breaking news where the last 30 days matter.
 
-1. plan the query
-2. retrieve per `(subquery, source)`
-3. normalize and dedupe
-4. extract best snippets
-5. fuse with weighted RRF
-6. rerank with one relevance score
-7. cluster evidence
-8. render ranked clusters
+Keep the user-facing story simple:
+
+- it works out of the box
+- X cookies and `yt-dlp` are the best free upgrades
+- ScrapeCreators is the biggest optional paid upgrade
+- native web backends are optional supplements
+- `/last30days setup` is the recommended first upgrade path for new users
 
 ## Interactive UX contract
 
@@ -81,7 +79,12 @@ Before calling any tools, parse the user's request into:
 Always show the user a short pre-flight message before the first tool call:
 
 ```text
-I'll research {TOPIC} across recent social, market, and web sources from the last 30 days -- synthesizing what people are actually saying right now.
+I'll research {TOPIC} across recent social, market, and web sources from the last 30 days.
+
+Parsed intent:
+- TOPIC = {TOPIC}
+- TARGET_TOOL = {TARGET_TOOL or "unknown"}
+- QUERY_TYPE = {QUERY_TYPE}
 
 Research typically takes 2-8 minutes. Starting now.
 ```
@@ -132,19 +135,19 @@ python3 "${SKILL_ROOT}/scripts/last30days.py" --diagnose
 
 ## Do I need API keys?
 
-**You do NOT need API keys to use last30days.** It works out of the box with Reddit (public threads), Hacker News, Polymarket, and YouTube. Browser cookies for X/Twitter are detected automatically -- just log into x.com in Firefox or Safari.
+**You do NOT need API keys to use last30days.** It works out of the box with Reddit (public threads), Hacker News, and Polymarket. Browser cookies for X/Twitter are detected automatically. Just log into x.com in Firefox or Safari.
 
 **Source unlock progression (most steps are free):**
-- **Zero config (40% quality):** Reddit (public threads), HN, Polymarket -- works immediately
-- **+ X cookies (60%):** Log into x.com in Firefox or Safari. Cookies are detected automatically on next run. Same access as an API key, no signup required.
-- **+ yt-dlp (80%):** `brew install yt-dlp` -- free, open source. Enables YouTube search and transcript extraction.
-- **+ ScrapeCreators (100%):** The single most impactful upgrade. Unlocks Reddit with full comment threads (the highest-value research content -- real user opinions with upvote signals), plus TikTok and Instagram. 100 free API calls, no credit card -- scrapecreators.com
+- **Zero config:** Reddit (public threads), HN, and Polymarket work immediately.
+- **+ X cookies:** Log into x.com in Firefox or Safari. Cookies are detected automatically on the next run.
+- **+ yt-dlp:** `brew install yt-dlp`. Free and open source. Improves YouTube search and transcript extraction.
+- **+ ScrapeCreators:** The single most impactful paid upgrade. Unlocks Reddit with full comment threads, plus TikTok and Instagram. 100 free API calls, no credit card, at scrapecreators.com.
 
-last30days has no affiliation with any API provider -- no referrals, no kickbacks.
+last30days has no affiliation with any API provider. No referrals, no kickbacks.
 
 ## Runtime details
 
-- Planning and reranking fall back gracefully: Gemini -> OpenAI -> xAI -> deterministic/local. No reasoning provider key needed for basic operation.
+- Planning and reranking fall back gracefully: Gemini -> OpenAI -> xAI -> deterministic/local. No reasoning provider key is needed for basic operation.
 - `BRAVE_API_KEY` or `EXA_API_KEY` or `SERPER_API_KEY` enables native web search (optional -- the host's WebSearch tool is used as fallback).
 - Web retrieval stays within dated results. Undated web hits are dropped.
 - For OpenClaw-specific watchlist, briefing, and history workflows, use `variants/open/SKILL.md`.
@@ -169,7 +172,7 @@ Recommended fallback queries:
 
 ## Output model
 
-- `compact` and `md`: cluster-first markdown
+- `compact` and `md`: briefing-style markdown built from clustered evidence
 - `json`: full v3 report
 - `context`: short synthesis-oriented context
 
@@ -205,7 +208,7 @@ After research finishes, synthesize into a user-facing answer. Do not just paste
 Always include:
 
 1. `What I learned`
-2. `Stats` (the tree-format stats block from the compact output)
+2. `Stats`
 3. An invitation adapted to the QUERY_TYPE, with 2-3 specific suggestions drawn from the actual findings
 
 **Invitation templates by QUERY_TYPE:**

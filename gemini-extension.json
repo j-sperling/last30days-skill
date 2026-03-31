@@ -4,94 +4,94 @@
   "description": "Research any topic from the last 30 days across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web.",
   "settings": [
     {
-      "name": "Google API Key",
-      "description": "Enables Gemini for planning and reranking. One reasoning provider is required (Google, OpenAI, or xAI).",
-      "envVar": "GOOGLE_API_KEY",
-      "sensitive": true
-    },
-    {
-      "name": "Brave API Key",
-      "description": "Enables Brave web search (recommended). Falls back to Serper if not set.",
-      "envVar": "BRAVE_API_KEY",
-      "sensitive": true
-    },
-    {
-      "name": "Serper API Key",
-      "description": "Web search fallback when Brave is not configured ($0.56/1K queries)",
-      "envVar": "SERPER_API_KEY",
-      "sensitive": true
-    },
-    {
       "name": "ScrapeCreators API Key",
-      "description": "Enables Reddit, TikTok, and Instagram search. Without this, those three sources are unavailable.",
+      "description": "Biggest optional upgrade. Unlocks Reddit comments plus TikTok and Instagram.",
       "envVar": "SCRAPECREATORS_API_KEY",
       "sensitive": true
     },
     {
-      "name": "OpenAI API Key",
-      "description": "Alternative reasoning provider. Falls back from Gemini automatically.",
-      "envVar": "OPENAI_API_KEY",
-      "sensitive": true
-    },
-    {
-      "name": "xAI API Key",
-      "description": "Enables xAI reasoning and X/Twitter search via Grok",
-      "envVar": "XAI_API_KEY",
-      "sensitive": true
-    },
-    {
-      "name": "Reasoning Provider",
-      "description": "Which LLM for planning/reranking: auto (default), gemini, openai, or xai",
-      "envVar": "LAST30DAYS_REASONING_PROVIDER",
-      "sensitive": false
-    },
-    {
-      "name": "Planner Model",
-      "description": "Override planner model. Must be a Gemini 3.1 preview model when using Gemini.",
-      "envVar": "LAST30DAYS_PLANNER_MODEL",
-      "sensitive": false
-    },
-    {
-      "name": "Rerank Model",
-      "description": "Override reranker model. Must be a Gemini 3.1 preview model when using Gemini.",
-      "envVar": "LAST30DAYS_RERANK_MODEL",
-      "sensitive": false
-    },
-    {
-      "name": "X Search Backend",
-      "description": "X/Twitter search method: xai (Grok, default) or bird (browser cookie auth)",
-      "envVar": "LAST30DAYS_X_BACKEND",
-      "sensitive": false
-    },
-    {
-      "name": "Bluesky Handle",
-      "description": "Your Bluesky handle (e.g. user.bsky.social). Enables Bluesky search.",
-      "envVar": "BSKY_HANDLE",
-      "sensitive": false
-    },
-    {
-      "name": "Bluesky App Password",
-      "description": "Bluesky app password. Pair with BSKY_HANDLE.",
-      "envVar": "BSKY_APP_PASSWORD",
-      "sensitive": true
-    },
-    {
-      "name": "Truth Social Token",
-      "description": "Enables Truth Social search",
-      "envVar": "TRUTHSOCIAL_TOKEN",
-      "sensitive": true
-    },
-    {
       "name": "X Browser AUTH_TOKEN",
-      "description": "Twitter/X browser cookie for direct search. Pair with CT0.",
+      "description": "Optional manual X/Twitter cookie. Pair with CT0 if you are not using the setup flow.",
       "envVar": "AUTH_TOKEN",
       "sensitive": true
     },
     {
       "name": "X Browser CT0",
-      "description": "Twitter/X browser cookie. Pair with AUTH_TOKEN.",
+      "description": "Optional manual X/Twitter cookie. Pair with AUTH_TOKEN if you are not using the setup flow.",
       "envVar": "CT0",
       "sensitive": true
+    },
+    {
+      "name": "Bluesky Handle",
+      "description": "Optional Bluesky handle, for example user.bsky.social.",
+      "envVar": "BSKY_HANDLE",
+      "sensitive": false
+    },
+    {
+      "name": "Bluesky App Password",
+      "description": "Optional Bluesky app password. Pair with BSKY_HANDLE.",
+      "envVar": "BSKY_APP_PASSWORD",
+      "sensitive": true
+    },
+    {
+      "name": "Truth Social Token",
+      "description": "Optional Truth Social token.",
+      "envVar": "TRUTHSOCIAL_TOKEN",
+      "sensitive": true
+    },
+    {
+      "name": "Brave API Key",
+      "description": "Optional native grounded web search with Brave.",
+      "envVar": "BRAVE_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "Serper API Key",
+      "description": "Optional native grounded web search fallback when Brave is not configured.",
+      "envVar": "SERPER_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "Google API Key",
+      "description": "Optional Gemini planner and reranker. The skill still works for basic use without this.",
+      "envVar": "GOOGLE_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "OpenAI API Key",
+      "description": "Optional OpenAI planner and reranker fallback.",
+      "envVar": "OPENAI_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "xAI API Key",
+      "description": "Optional xAI planner and reranker, plus Grok-based X search.",
+      "envVar": "XAI_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "Reasoning Provider",
+      "description": "Advanced override. Leave unset for automatic provider selection.",
+      "envVar": "LAST30DAYS_REASONING_PROVIDER",
+      "sensitive": false
+    },
+    {
+      "name": "Planner Model",
+      "description": "Advanced override for the planner model.",
+      "envVar": "LAST30DAYS_PLANNER_MODEL",
+      "sensitive": false
+    },
+    {
+      "name": "Rerank Model",
+      "description": "Advanced override for the reranker model.",
+      "envVar": "LAST30DAYS_RERANK_MODEL",
+      "sensitive": false
+    },
+    {
+      "name": "X Search Backend",
+      "description": "Advanced override for X/Twitter search: xai or bird.",
+      "envVar": "LAST30DAYS_X_BACKEND",
+      "sensitive": false
     }
   ]
 }

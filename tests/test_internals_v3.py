@@ -184,7 +184,7 @@ class TestFormatCorroboration(unittest.TestCase):
     def test_multi_source(self):
         c = _candidate(sources=["reddit", "x", "hackernews"])
         result = render._format_corroboration(c)
-        self.assertIn("Also on", result)
+        self.assertIn("Also seen in", result)
         self.assertIn("X", result)
 
     def test_single_source_none(self):
@@ -554,4 +554,3 @@ class TestXaiModelDefault(unittest.TestCase):
         from lib import providers
         self.assertIn("grok-4", providers.XAI_DEFAULT,
                       f"XAI_DEFAULT should be a grok-4 model, got: {providers.XAI_DEFAULT}")
-

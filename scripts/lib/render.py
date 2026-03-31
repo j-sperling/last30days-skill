@@ -46,7 +46,7 @@ SOURCE_NOUN: dict[str, tuple[str, str]] = {
 def render_compact(report: schema.Report, cluster_limit: int = 8, quality: dict | None = None) -> str:
     non_empty = [s for s, items in sorted(report.items_by_source.items()) if items]
     lines = [
-        f"# last30days v3.0.0: {report.topic}",
+        f"# last30days: {report.topic}",
         "",
         f"- Date range: {report.range_from} to {report.range_to}",
         f"- Sources: {len(non_empty)} active ({', '.join(_source_label(s) for s in non_empty)})" if non_empty else "- Sources: none",
@@ -54,41 +54,19 @@ def render_compact(report: schema.Report, cluster_limit: int = 8, quality: dict 
     ]
 
     freshness_warning = _assess_data_freshness(report)
-    if freshness_warning:
-        lines.extend([
-            "## Freshness",
-            f"- {freshness_warning}",
-            "",
-        ])
-
-    if report.warnings:
-        lines.append("## Warnings")
-        lines.extend(f"- {warning}" for warning in report.warnings)
-        lines.append("")
-
-    lines.append("## Ranked Evidence Clusters")
+    lines.append("## What I learned")
     lines.append("")
     candidate_by_id = {candidate.candidate_id: candidate for candidate in report.ranked_candidates}
-    for index, cluster in enumerate(report.clusters[:cluster_limit], start=1):
-        lines.append(
-            f"### {index}. {cluster.title} "
-            f"(score {cluster.score:.0f}, {len(cluster.candidate_ids)} item{'s' if len(cluster.candidate_ids) != 1 else ''}, "
-            f"sources: {', '.join(_source_label(source) for source in cluster.sources)})"
-        )
-        if cluster.uncertainty:
-            lines.append(f"- Uncertainty: {cluster.uncertainty}")
-        for rep_index, candidate_id in enumerate(cluster.representative_ids, start=1):
-            candidate = candidate_by_id.get(candidate_id)
-            if not candidate:
-                continue
-            lines.extend(_render_candidate(candidate, prefix=f"{rep_index}."))
+    clusters = report.clusters[:cluster_limit]
+    if not clusters:
+        lines.append("- I did not find enough usable recent evidence to support a confident answer yet.")
         lines.append("")
+    else:
+        for cluster in clusters:
+            lines.extend(_render_cluster(cluster, candidate_by_id))
 
     lines.extend(_render_stats_tree(report))
-    lines.extend(_render_source_status(report))
-    if quality:
-        lines.extend(_render_quality_nudge(quality))
-    lines.extend(_render_metadata(report))
+    lines.extend(_render_coverage_notes(report, freshness_warning=freshness_warning, quality=quality))
     return "\n".join(lines).strip() + "\n"
 
 
@@ -123,58 +101,49 @@ def render_context(report: schema.Report, cluster_limit: int = 6) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
-def _render_candidate(candidate: schema.Candidate, prefix: str) -> list[str]:
-    primary = schema.candidate_primary_item(candidate)
-    detail_parts = [
-        _format_date(primary),
-        _format_actor(primary),
-        _format_engagement(primary),
-        f"score:{candidate.final_score:.0f}",
-    ]
-    details = " | ".join(part for part in detail_parts if part)
-    lines = [
-        f"{prefix} [{schema.candidate_source_label(candidate)}] {candidate.title}",
-        f"   - {details}",
-        f"   - URL: {candidate.url}",
-    ]
-    corroboration = _format_corroboration(candidate)
-    if corroboration:
-        lines.append(f"   - {corroboration}")
-    explanation = _format_explanation(candidate)
-    if explanation:
-        lines.append(f"   - Why: {explanation}")
-    if candidate.snippet:
-        lines.append(f"   - Evidence: {_truncate(candidate.snippet, 360)}")
-    top_comment = _top_comment_excerpt(primary)
-    if top_comment:
-        lines.append(f"   - Top comment: {_truncate(top_comment, 240)}")
-    insight = _comment_insight(primary)
-    if insight:
-        lines.append(f"   - Insight: {_truncate(insight, 220)}")
-    highlights = _transcript_highlights(primary)
-    if highlights:
-        lines.append("   - Highlights:")
-        for hl in highlights:
-            lines.append(f'     - "{_truncate(hl, 200)}"')
+def _render_cluster(
+    cluster: schema.Cluster,
+    candidate_by_id: dict[str, schema.Candidate],
+) -> list[str]:
+    lines = [f"### {cluster.title}"]
+    cluster_note = _cluster_note(cluster)
+    if cluster_note:
+        lines.append(f"- {cluster_note}")
+    for candidate_id in cluster.representative_ids:
+        candidate = candidate_by_id.get(candidate_id)
+        if not candidate:
+            continue
+        lines.extend(_render_candidate(candidate))
+    lines.append("")
     return lines
 
 
-def _render_source_status(report: schema.Report) -> list[str]:
-    lines = [
-        "## Source Status",
-        "",
-    ]
-    seen_sources: set[str] = set()
-    for source, items in sorted(report.items_by_source.items()):
-        seen_sources.add(source)
-        if not items:
-            if source in report.errors_by_source:
-                lines.append(f"  \u274c {_source_label(source)}: error -- {report.errors_by_source[source]}")
-            continue
-        lines.append(f"  \u2705 {_source_label(source)}: {_count_noun(source, len(items))}")
-    for source, error in sorted(report.errors_by_source.items()):
-        if source not in seen_sources:
-            lines.append(f"  \u274c {_source_label(source)}: error -- {error}")
+def _render_candidate(candidate: schema.Candidate) -> list[str]:
+    primary = schema.candidate_primary_item(candidate)
+    detail_parts = [_source_label(candidate.source), _format_actor(primary), _format_brief_date(primary)]
+    engagement = _format_engagement(primary)
+    if engagement:
+        detail_parts.append(engagement.strip("[]"))
+    details = "; ".join(part for part in detail_parts if part)
+    lines = [f"- {candidate.title}{f' ({details})' if details else ''}"]
+    corroboration = _format_corroboration(candidate)
+    if corroboration:
+        lines.append(f"  - {corroboration}")
+    explanation = _format_explanation(candidate)
+    if explanation:
+        lines.append(f"  - Why it matters: {explanation}")
+    if candidate.snippet:
+        lines.append(f"  - Evidence: {_truncate(candidate.snippet, 360)}")
+    top_comment = _top_comment_excerpt(primary)
+    if top_comment:
+        lines.append(f"  - Top comment: {_truncate(top_comment, 240)}")
+    insight = _comment_insight(primary)
+    if insight:
+        lines.append(f"  - Insight: {_truncate(insight, 220)}")
+    highlights = _transcript_highlights(primary)
+    if highlights:
+        for hl in highlights:
+            lines.append(f'  - Transcript highlight: "{_truncate(hl, 200)}"')
     return lines
 
 
@@ -189,15 +158,17 @@ def _render_stats_tree(report: schema.Report) -> list[str]:
         if items
     }
     if not non_empty_sources:
-        lines.append("- No usable source metrics available.")
+        lines.append("- No usable source metrics were available for this run.")
         lines.append("")
         return lines
 
-    lines.append("\u2705 All sources reported back!")
+    active_sources = ", ".join(
+        f"{_source_label(source)} ({_count_noun(source, len(items))})"
+        for source, items in non_empty_sources.items()
+    )
+    lines.append(f"- Active sources: {active_sources}")
 
-    source_lines: list[str] = []
     for source, items in non_empty_sources.items():
-        emoji = SOURCE_EMOJI.get(source, "")
         parts = [f"{_count_noun(source, len(items))}"]
         engagement_summary = _aggregate_engagement(source, items)
         if engagement_summary:
@@ -205,40 +176,47 @@ def _render_stats_tree(report: schema.Report) -> list[str]:
         actor_summary = _top_actor_summary(source, items)
         if actor_summary:
             parts.append(actor_summary)
-        source_lines.append(f" {emoji} {_source_label(source)}: {' \u2502 '.join(parts)}")
+        lines.append(f"- {_source_label(source)}: {'; '.join(parts)}")
 
     top_voices = _top_voices_overall(non_empty_sources)
     if top_voices:
-        source_lines.append(f" \U0001f5e3\ufe0f Top voices: {', '.join(top_voices)}")
-
-    for i, line in enumerate(source_lines):
-        prefix = "\u2514\u2500" if i == len(source_lines) - 1 else "\u251c\u2500"
-        lines.append(f"{prefix}{line}")
+        lines.append(f"- Top voices: {', '.join(top_voices)}")
     lines.append("")
     return lines
 
 
-def _render_quality_nudge(quality: dict) -> list[str]:
-    """Render research coverage from quality_nudge.compute_quality_score() output."""
-    nudge_text = quality.get("nudge_text")
-    if not nudge_text:
-        return []
-    return [
-        f"## Research Coverage: {quality['score_pct']}%",
-        "",
-        nudge_text,
-        "",
+def _render_coverage_notes(
+    report: schema.Report,
+    *,
+    freshness_warning: str | None,
+    quality: dict | None,
+) -> list[str]:
+    notes: list[str] = []
+    if freshness_warning:
+        notes.append(freshness_warning)
+
+    notes.extend(report.warnings)
+
+    zero_sources = [
+        source
+        for source in report.query_plan.source_weights
+        if not report.items_by_source.get(source) and source not in report.errors_by_source
     ]
+    if zero_sources:
+        labels = [_source_label(source) for source in zero_sources]
+        notes.append(f"No usable items surfaced from {_join_labels(labels)}.")
 
+    for source, error in sorted(report.errors_by_source.items()):
+        notes.append(f"{_source_label(source)} had an error: {error}")
 
-def _render_metadata(report: schema.Report) -> list[str]:
-    rt = report.provider_runtime
-    lines = ["## Metadata", ""]
-    lines.append(f"- Reasoning: {rt.reasoning_provider} ({rt.planner_model})")
-    lines.append(f"- Reranking: {rt.rerank_model}")
-    if rt.x_search_backend:
-        lines.append(f"- X backend: {rt.x_search_backend}")
-    lines.append(f"- Generated: {report.generated_at}")
+    if quality and quality.get("nudge_text"):
+        notes.extend(line.strip() for line in quality["nudge_text"].splitlines() if line.strip())
+
+    if not notes:
+        return []
+
+    lines = ["## Coverage notes", ""]
+    lines.extend(f"- {note}" for note in notes)
     lines.append("")
     return lines
 
@@ -275,6 +253,16 @@ def _format_date(item: schema.SourceItem | None) -> str:
     if item.date_confidence == "high":
         return item.published_at
     return f"{item.published_at} [date:{item.date_confidence}]"
+
+
+def _format_brief_date(item: schema.SourceItem | None) -> str | None:
+    if not item or not item.published_at:
+        return None
+    if item.date_confidence == "high":
+        return item.published_at
+    if item.date_confidence == "low":
+        return f"{item.published_at} (approx. date)"
+    return f"{item.published_at} (inferred date)"
 
 
 def _format_actor(item: schema.SourceItem | None) -> str | None:
@@ -416,7 +404,7 @@ def _format_corroboration(candidate: schema.Candidate) -> str | None:
     ]
     if not corroborating:
         return None
-    return f"Also on: {', '.join(corroborating)}"
+    return f"Also seen in: {', '.join(corroborating)}"
 
 
 def _format_explanation(candidate: schema.Candidate) -> str | None:
@@ -452,6 +440,27 @@ def _transcript_highlights(item: schema.SourceItem | None) -> list[str]:
 
 def _source_label(source: str) -> str:
     return SOURCE_LABELS.get(source, source.replace("_", " ").title())
+
+
+def _cluster_note(cluster: schema.Cluster) -> str | None:
+    if cluster.uncertainty == "single-source":
+        return "Limited recent data: this theme showed up on one source."
+    if cluster.uncertainty == "thin-evidence":
+        return "Limited recent data: only a small amount of evidence supported this theme."
+    return None
+
+
+def _join_labels(labels: list[str], limit: int = 4) -> str:
+    if not labels:
+        return ""
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    if len(labels) <= limit:
+        return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+    head = ", ".join(labels[: limit - 1])
+    return f"{head}, and {len(labels) - (limit - 1)} more sources"
 
 
 def _truncate(text: str, limit: int) -> str:

@@ -200,6 +200,7 @@ def main() -> int:
         parser.print_usage(sys.stderr)
         return 2
 
+    ui.show_diagnostic_banner(diag)
     progress = ui.ProgressDisplay(topic, show_banner=True)
     progress.start_processing()
 

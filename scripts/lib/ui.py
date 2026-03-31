@@ -183,7 +183,7 @@ I just researched that for you. Here's what I've got right now:
 
 {status_line}
 
-More sources means better research, but it works fine as-is. You can unlock more for free -- log into x.com in your browser for X, run `brew install yt-dlp` for YouTube transcripts, or get a free ScrapeCreators key at scrapecreators.com for Reddit comments + TikTok + Instagram.
+It works out of the box. Unlock more only when you need it: log into x.com in your browser for X, run `brew install yt-dlp` for YouTube search and transcripts, or add a free ScrapeCreators key at scrapecreators.com for Reddit comments plus TikTok and Instagram. If you are new here, `last30days setup` is the best first step.
 
 Some examples of what you can do:
 - "last30 what are people saying about Figma"
@@ -196,9 +196,9 @@ Just start with "last30" and talk to me like normal.
 
 # Shorter promo for single missing key
 PROMO_SINGLE_KEY = {
-    "reddit": "\n💡 Unlock Reddit, TikTok, and Instagram with SCRAPECREATORS_API_KEY -- 100 free calls, no CC -- scrapecreators.com\n",
-    "x": "\n💡 Unlock X: log into x.com in Firefox or Safari, then re-run. Or add AUTH_TOKEN/CT0 or XAI_API_KEY.\n",
-    "web": "\n💡 You can unlock native grounded web search with BRAVE_API_KEY or SERPER_API_KEY.\n",
+    "reddit": "\n💡 Biggest upgrade: add SCRAPECREATORS_API_KEY for Reddit comments plus TikTok and Instagram. 100 free calls. scrapecreators.com\n",
+    "x": "\n💡 Best free upgrade: log into x.com in Firefox or Safari, then re-run. Or add AUTH_TOKEN/CT0 or XAI_API_KEY.\n",
+    "web": "\n💡 Optional web upgrade: add BRAVE_API_KEY or SERPER_API_KEY for native grounded web search.\n",
 }
 
 # Bird auth help (for local users with vendored Bird CLI)
@@ -413,10 +413,21 @@ class ProgressDisplay:
                     display_sources = ["reddit", "x"]
 
         ordered_sources = _completion_sources(source_counts, display_sources)
+        visible_sources = [source for source in ordered_sources if source_counts.get(source, 0) > 0]
         parts = [
             _format_completion_part(source, source_counts.get(source, 0), tty=IS_TTY)
-            for source in ordered_sources
+            for source in visible_sources
         ]
+        if not parts:
+            message = f"✓ Research complete ({elapsed:.1f}s) - no usable recent results"
+            if IS_TTY:
+                sys.stderr.write(f"\n{Colors.GREEN}{Colors.BOLD}✓ Research complete{Colors.RESET} ")
+                sys.stderr.write(f"{Colors.DIM}({elapsed:.1f}s){Colors.RESET}\n")
+                sys.stderr.write("  No usable recent results yet.\n\n")
+            else:
+                sys.stderr.write(message + "\n")
+            sys.stderr.flush()
+            return
         if IS_TTY:
             sys.stderr.write(f"\n{Colors.GREEN}{Colors.BOLD}✓ Research complete{Colors.RESET} ")
             sys.stderr.write(f"{Colors.DIM}({elapsed:.1f}s){Colors.RESET}\n")
@@ -546,7 +557,7 @@ def show_diagnostic_banner(diag: dict):
             backend = native_web_backend or "native"
             lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Web{Colors.RESET}       — {backend} API                       {Colors.DIM}│{Colors.RESET}")
         else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.YELLOW}⚡ Web{Colors.RESET}       — Add BRAVE_API_KEY or SERPER_API_KEY {Colors.DIM}│{Colors.RESET}")
+            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.YELLOW}⚡ Web{Colors.RESET}       — optional upgrade via Brave/Serper {Colors.DIM}│{Colors.RESET}")
 
         lines.append(f"{Colors.DIM}│{Colors.RESET}                                                     {Colors.DIM}│{Colors.RESET}")
         lines.append(f"{Colors.DIM}│{Colors.RESET}  Config: {Colors.BOLD}~/.config/last30days/.env{Colors.RESET}                  {Colors.DIM}│{Colors.RESET}")
@@ -586,7 +597,7 @@ def show_diagnostic_banner(diag: dict):
             backend = native_web_backend or "native"
             lines.append(f"│  ✅ Web       — {backend} API available{' ' * max(0, 13 - len(backend))}│")
         else:
-            lines.append("│  ⚡ Web       — Add BRAVE_API_KEY or SERPER_API_KEY │")
+            lines.append("│  ⚡ Web       — optional upgrade via Brave/Serper   │")
 
         lines.append("│                                                     │")
         lines.append("│  Config: ~/.config/last30days/.env                  │")

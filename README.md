@@ -1,4 +1,4 @@
-# /last30days v2.9.5
+# /last30days v3.0.0
 
 ### Claude Code (recommended)
 ```
@@ -12,45 +12,21 @@
 clawhub install last30days-official
 ```
 
-**The AI world reinvents itself every month. This skill keeps you current.** /last30days researches your topic across Reddit, X, YouTube, and other sources from the last 30 days, finds what the community is actually upvoting, sharing, betting on, and saying on camera, and writes you a grounded narrative with real citations. Whether it's Seedance 2.0 access, paper.design prompts, or the latest Nano Banana Pro techniques, you'll know what people who are paying attention already know.
+**/last30days tells you what people are actually saying right now.** It researches your topic across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Bluesky, Truth Social, Polymarket, and the web, then turns that evidence into a grounded briefing with citations. Use it when the last 30 days matter and you want signal instead of guesses.
 
-**New in v2.9.5 — Bluesky, Comparative Mode, and Config Improvements:**
+It is especially strong for:
 
-- **Bluesky/AT Protocol** is now a social source. Opt-in via `BSKY_HANDLE` + `BSKY_APP_PASSWORD` (create at bsky.app/settings/app-passwords). Full pipeline: search, score, dedupe, render.
-- **Comparative mode** - ask "X vs Y" (e.g., `/last30 Claude Code vs Codex`) and get 3 parallel research passes with a side-by-side comparison: strengths, weaknesses, head-to-head table, and a data-driven verdict.
-- **Per-project .env config** - drop a `.claude/last30days.env` in your project root for per-project API keys.
-- **SessionStart config check** - validates your config automatically when a Claude Code session starts.
-- **Expanded test coverage** - 455+ tests across all modules.
+- prompt research
+- product and competitor research
+- breaking news and trend checks
+- recommendations where current sentiment matters
+- side-by-side comparisons like "X vs Y"
 
-**New in v2.9.1 — Auto-save to ~/Documents/Last30Days/:** Every run now saves the complete briefing as a topic-named `.md` file to your Documents folder. Build a personal research library automatically. Inspired by [@devin_explores](https://x.com/devin_explores).
-
-**New in v2.9 — ScrapeCreators Reddit + Top Comments + Smart Discovery:**
-
-Reddit now runs on [ScrapeCreators](https://scrapecreators.com) by default — one `SCRAPECREATORS_API_KEY` covers Reddit, TikTok, and Instagram (3 sources, 1 key). Smart subreddit discovery finds the right communities automatically, and top comments are elevated with a 10% scoring weight and `💬` display with upvote counts. [Details below.](#whats-new-in-v29)
-
-**New in v2.8 — Instagram Reels + ScrapeCreators:**
-
-Instagram Reels is now the 8th signal source. TikTok and Instagram both run on ScrapeCreators — one API key covers both. [Details below.](#whats-new-in-v28)
-
-**New in V2.5 - dramatically better results:**
-
-1. **Polymarket prediction markets and Hacker News.** See what people are betting real money on and what the technical community is actually discussing. Search "Arizona Basketball" and get NCAA Tournament championship odds (Arizona: 12%), #1 seed probability (88%), and Big 12 title race (69%) - pulled from 50+ open markets across 10 events, not just Reddit opinions. Search "Iran War" and get 15 live prediction markets with strike probabilities, regime change bets, and war declaration odds. Two-pass query expansion with tag-based domain bridging discovers markets where your topic is an outcome buried inside a broader event, not just a title keyword match. HN stories, Show HN posts, and comment insights are scored by points + comments and participate in cross-source convergence detection.
-2. **Multi-signal quality-ranked relevance scoring.** Every result across all six sources runs through a composite scoring pipeline: bidirectional text similarity with synonym expansion and token overlap, engagement velocity normalization, source authority weighting, cross-platform convergence detection via hybrid trigram-token Jaccard similarity, and temporal recency decay. Polymarket markets are ranked on a 5-factor weighted composite - text relevance (30%), 24-hour volume (30%), liquidity depth (15%), price movement velocity (15%), and outcome competitiveness (10%) - with outcome-aware scoring that matches your topic against individual market positions, not just event titles. A blinded evaluation scored v2.5 at 4.38/5.0 vs 3.73/5.0 for v1 across 5 test topics.
-3. **X handle resolution.** Search "Dor Brothers" and the skill resolves their handle (@thedorbrothers), then searches their posts directly - finding their 5,600-like viral tweet that keyword search missed entirely. Works for people, brands, products, and tools.
-
-**New in V2.1:** Open-class skill with watchlists, YouTube transcripts as a source, works in OpenAI Codex CLI. [Full changelog below.](#whats-new-in-v21)
-
-**New in V2:** Smarter query construction, two-phase supplemental search, free X search via bundled Bird client, `--days=N` flag, automatic model fallback. [Full changelog below.](#whats-new-in-v2)
-
-**The tradeoff:** /last30days finds a lot of content but takes 2-8 minutes depending on how niche your topic is. Up to 10 sources searched in parallel, results scored, deduplicated, and synthesized. We think the depth is worth the wait, but `--quick` mode is there if you need speed over thoroughness.
-
-**Best for prompt research**: discover what prompting techniques actually work for any tool (ChatGPT, Midjourney, Claude, Paper, etc.) by learning from real community discussions and best practices.
-
-**But also great for anything trending**: music, culture, news, product recommendations, viral trends, or any question where "what are people saying right now?" matters.
+The tradeoff is still the same: deeper research takes 2-8 minutes. That is slower than a normal answer, but it is what lets the skill search broadly, dedupe aggressively, and surface what people who are paying attention already know.
 
 ## Installation
 
-### Claude Code Plugin (recommended)
+### Claude Code plugin
 ```
 /plugin marketplace add mvanhorn/last30days-skill
 /plugin install last30days@last30days-skill
@@ -61,145 +37,124 @@ Instagram Reels is now the 8th signal source. TikTok and Instagram both run on S
 gemini extensions install https://github.com/mvanhorn/last30days-skill.git
 ```
 
-### Manual Install (Claude Code / Codex)
+### Manual install
 ```bash
 git clone https://github.com/mvanhorn/last30days-skill.git ~/.claude/skills/last30days
 ```
 
-That's it. Reddit, Hacker News, and Polymarket work immediately with zero configuration. Run `/last30days` to unlock more sources.
+That is enough to start. Reddit, Hacker News, and Polymarket work immediately with zero API keys. Run `/last30days` first, then unlock more only when you need it.
 
----
+## Setup: start free, unlock more when needed
 
-## Setup: Progressive Source Unlocking
+### 1. Just install it
 
-Start using /last30days immediately. Add sources when you want better results.
+Out of the box you get Reddit public threads, Hacker News, and Polymarket.
 
-### 1. Zero Config (3 sources) — Just install
-
-Reddit (public JSON), Hacker News, and Polymarket work out of the box. No API keys, no configuration.
-
-### 2. Run the setup wizard (5+ sources)
+### 2. Run the setup wizard
 
 ```
 /last30days setup
 ```
 
-The setup wizard automatically extracts X/Twitter login cookies from your browsers (Chrome, Firefox, Safari) and checks for yt-dlp. Takes about 30 seconds. Your cookies stay in memory and are never saved to disk.
+This is the recommended first upgrade. It checks for `yt-dlp` and looks for X/Twitter browser cookies so you can unlock better coverage without signing up for anything new.
 
-### 3. Add Exa (FREE — semantic web search)
+### 3. Use the best free upgrades
 
-Register at [exa.ai](https://exa.ai) for 1,000 free searches/month, no credit card required.
+- Log into `x.com` in Firefox or Safari. The skill can reuse those cookies for X search.
+- Install `yt-dlp` with `brew install yt-dlp`. That unlocks YouTube search and transcript coverage.
+- Add Bluesky with a free app password if you care about Bluesky specifically.
 
-```bash
-# Add to ~/.config/last30days/.env
-EXA_API_KEY=...
-```
+### 4. Add the biggest paid upgrade only if you want deeper social coverage
 
-### 4. Add ScrapeCreators (RECOMMENDED — Reddit comments + TikTok + Instagram)
-
-**This is the single most impactful upgrade.** Reddit comments are often the highest-value research content — top-voted replies with real insights. ScrapeCreators unlocks comment enrichment plus TikTok and Instagram. Register at [scrapecreators.com](https://scrapecreators.com) for 100 free API calls (no credit card required). After that, pay-as-you-go. last30days receives no money from any API provider — no referrals, no kickbacks.
+If you add one paid key, make it [ScrapeCreators](https://scrapecreators.com). It unlocks Reddit comments, TikTok, and Instagram. Reddit comments are often the most valuable research content in the whole run. last30days has no referral deal and receives no kickbacks from any provider.
 
 ```bash
-# Add to ~/.config/last30days/.env
+# ~/.config/last30days/.env
 SCRAPECREATORS_API_KEY=...
 ```
 
-### 5. Add Bluesky (FREE — app password)
+### 5. Add native web search only if you want it
 
-Create an app password at [bsky.app/settings/app-passwords](https://bsky.app/settings/app-passwords).
+Native web search is optional. The current v3 engine uses Brave or Serper for grounded web retrieval.
 
 ```bash
-# Add to ~/.config/last30days/.env
+# ~/.config/last30days/.env
+BRAVE_API_KEY=...
+SERPER_API_KEY=...
+```
+
+### 6. Optional source-specific extras
+
+```bash
+# Bluesky
 BSKY_HANDLE=you.bsky.social
 BSKY_APP_PASSWORD=xxxx-xxxx-xxxx
+
+# Truth Social
+TRUTHSOCIAL_TOKEN=...
 ```
-
-### 6. Optional paid web search backends
-
-```bash
-# Add to ~/.config/last30days/.env
-PARALLEL_API_KEY=...    # Parallel AI (preferred — LLM-optimized results)
-BRAVE_API_KEY=...       # Brave Search (free tier: 2,000 queries/month)
-OPENROUTER_API_KEY=...  # OpenRouter/Perplexity Sonar Pro
-```
-
----
 
 ### Do I need API keys?
 
-| Source | Free Method | API Key | Do you need the API key? |
-|--------|------------|---------|--------------------------|
-| Reddit | Public JSON (always works) | ScrapeCreators | **Yes, strongly recommended.** Unlocks top comments — often the most valuable content. |
-| X/Twitter | Browser cookies (auto-extracted) | xAI API key (`XAI_API_KEY`) | **No.** Cookies give identical quality. The setup wizard handles this. |
-| YouTube | yt-dlp (`brew install yt-dlp`) | N/A | **No API key exists.** Install yt-dlp for search; transcripts work without it. |
-| Hacker News | Always free | N/A | **No.** Always works, no config needed. |
-| Polymarket | Always free | N/A | **No.** Always works, no config needed. |
-| Web search | N/A | Exa (`EXA_API_KEY`) | **Optional.** 1,000 free searches/month at exa.ai. |
-| Bluesky | Free app password | N/A | **Optional.** Free app password at bsky.app. |
-| TikTok | N/A | ScrapeCreators | **Optional.** Included with ScrapeCreators key. |
-| Instagram | N/A | ScrapeCreators | **Optional.** Included with ScrapeCreators key. |
-| Truth Social | Browser cookies | N/A | **Optional.** Auto-extracted if logged in. |
+| Source | Best unlock path | Required? | Notes |
+|--------|------------------|-----------|-------|
+| Reddit | None for threads, ScrapeCreators for comments | No | Public Reddit threads work now. ScrapeCreators is strongly recommended for comment coverage. |
+| X/Twitter | Browser cookies from `x.com` | No | Best free upgrade. The setup flow can detect cookies automatically. |
+| YouTube | `brew install yt-dlp` | No | No API key exists here. `yt-dlp` is the free upgrade that matters. |
+| Hacker News | None | No | Always works. |
+| Polymarket | None | No | Always works. |
+| Bluesky | App password | No | Optional. |
+| Truth Social | Token/cookies | No | Optional. |
+| TikTok | ScrapeCreators | No | Included with ScrapeCreators. |
+| Instagram | ScrapeCreators | No | Included with ScrapeCreators. |
+| Web | Brave or Serper | No | Optional supplement to the social/community sources. |
 
-*last30days receives no money from any API provider — no referrals, no kickbacks.*
-
----
-
-### Config file locations
+## Config file locations
 
 For project-specific overrides, create `.claude/last30days.env` in the repo root. It overrides the global `~/.config/last30days/.env`.
 
 ```bash
-# Global config
 mkdir -p ~/.config/last30days
 chmod 600 ~/.config/last30days/.env
-
-# Project-specific config (optional)
-# .claude/last30days.env
 ```
 
-Check source availability: `python3 scripts/last30days.py --diagnose`
-
-### Codex CLI
-
-This skill also works in OpenAI Codex CLI. Install to the Codex skills directory instead:
+Check source availability with:
 
 ```bash
-git clone https://github.com/mvanhorn/last30days-skill.git ~/.agents/skills/last30days
+python3 scripts/last30days.py --diagnose
 ```
 
-Same SKILL.md, same Python engine, same scripts. The `agents/openai.yaml` provides Codex-specific discovery metadata. Invoke with `$last30days` or through the `/skills` menu.
+## Codex CLI
 
-### Open Variant (Watchlist + Briefings)  - For Always-On Bots
-
-**Designed for [Open Claw](https://github.com/openclaw/openclaw) and similar always-on AI environments.** Add your competitors, specific people, or any topic to a watchlist. When paired with a cron job or always-on bot, /last30days re-researches them on a schedule and accumulates findings in a local SQLite database. Ask for a briefing anytime.
-
-**Important:** The watchlist stores schedules as metadata, but nothing triggers runs automatically. You need an external scheduler (cron, launchd, or an always-on bot like Open Claw) to call `watchlist.py run-all` on a timer. In plain Claude Code, you can run `watch run-one` and `watch run-all` manually, but there's no background scheduling.
+This skill also works in Codex. Install it into the Codex skills directory:
 
 ```bash
-# Enable the open variant
+git clone https://github.com/mvanhorn/last30days-skill.git ~/.codex/skills/last30days
+```
+
+The same Python engine powers Claude Code, Gemini CLI, Codex, and OpenClaw.
+
+## Open Variant: watchlists, briefings, and history
+
+The open variant is for always-on agents and bots that should remember what they found. It adds four persistent workflows on top of one-shot research:
+
+- **Watchlist**: track topics, people, or competitors over time
+- **Briefings**: roll up stored findings into a digest
+- **History**: search accumulated research later
+- **One-shot with storage**: regular research runs can feed the store automatically
+
+Native web coverage in the open variant uses the same Brave or Serper backends as the main v3 engine. If you want scheduled runs, you still need an external scheduler such as cron, launchd, or OpenClaw itself.
+
+```bash
+# Enable the open variant in a local skill install
 cp variants/open/SKILL.md ~/.claude/skills/last30days/SKILL.md
 
-# Add topics to your watchlist
+# Example commands in an always-on environment
 last30 watch my biggest competitor every week
-last30 watch Peter Steinberger every 30 days
-last30 watch AI video tools monthly
-last30 Y Combinator hot companies end of April and end of September
-
-# Run research manually (or let your bot's cron handle it)
-last30 run all my watched topics
-
-# Search accumulated knowledge
-last30 what have you found about AI video?
+last30 briefing
+last30 history "AI video"
+last30 codex vs claude code
 ```
-
-The open variant adds four modes on top of one-shot research:
-
-- **Watchlist**  - Track topics with `watch add "topic"`, run manually or via cron
-- **Briefings**  - Daily/weekly digests synthesized from accumulated findings
-- **History**  - Query and search your research database with full-text search
-- **Native web search**  - Built-in web search backends (Parallel AI, Brave, OpenRouter) run alongside Reddit/X/YouTube
-
-Both variants use the same Python engine and scripts directory. The open variant adds command routing (`watch`, `briefing`, `history`) and references mode-specific instruction files.
 
 ## Usage
 
@@ -209,23 +164,25 @@ Both variants use the same Python engine and scripts directory. The open variant
 ```
 
 Examples:
+
 - `/last30days prompting techniques for ChatGPT for legal questions`
 - `/last30days iOS app mockups for Nano Banana Pro`
-- `/last30days What are the best rap songs lately`
+- `/last30days what are the best rap songs lately`
 - `/last30days remotion animations for Claude Code`
 
-## What It Does
+## What it does
 
-1. **Researches** - Scans Reddit, X, YouTube, and other sources for discussions from the last 30 days
-2. **Synthesizes** - Identifies patterns, best practices, and what actually works
-3. **Delivers** - Either writes copy-paste-ready prompts for your target tool, or gives you a curated expert-level answer
+1. **Researches**: scans recent social, market, and web sources
+2. **Synthesizes**: finds the patterns and disagreements that matter
+3. **Delivers**: gives you a grounded answer, or a research-backed prompt if that is what you asked for
 
-### Use it for:
-- **Prompt research** - "What prompting techniques work for legal questions in ChatGPT?"
-- **Tool best practices** - "How are people using Remotion with Claude Code?"
-- **Trend discovery** - "What are the best rap songs right now?"
-- **Product research** - "What do people think of the new M4 MacBook?"
-- **Viral content** - "What's the dog-as-human trend on ChatGPT?"
+### Use it for
+
+- **Prompt research**: "What prompting techniques work for legal questions in ChatGPT?"
+- **Tool best practices**: "How are people using Remotion with Claude Code?"
+- **Trend discovery**: "What are the best rap songs right now?"
+- **Product research**: "What do people think of the new M4 MacBook?"
+- **Viral content**: "What's the dog-as-human trend on ChatGPT?"
 
 ---
 
@@ -1021,6 +978,10 @@ gpt-4.1 -> gpt-4o -> gpt-4o-mini
 If your OpenAI org doesn't have access to a model (e.g., unverified for gpt-4.1), it tries the next one.
 
 ---
+
+## Historical release notes
+
+The sections below describe older releases and legacy implementation details. They are kept for historical context and benchmarking, not as the current v3 setup guide.
 
 ## What's New in v2.9
 

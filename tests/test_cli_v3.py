@@ -98,7 +98,8 @@ class CliV3Tests(unittest.TestCase):
         json_output = cli.emit_output(report, "json")
         context = cli.emit_output(report, "context")
 
-        self.assertIn("# last30days v3.0.0", compact)
+        self.assertIn("# last30days: OpenClaw vs NanoClaw", compact)
+        self.assertIn("## What I learned", compact)
         self.assertIn('"topic": "OpenClaw vs NanoClaw"', json_output)
         self.assertIsInstance(context, str)
 
@@ -174,7 +175,7 @@ class CliV3Tests(unittest.TestCase):
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 rc = cli.main()
         self.assertEqual(0, rc)
-        banner.assert_not_called()  # Banner moved to post-research
+        banner.assert_called_once_with(diag)
         progress_cls.assert_called_once_with("test topic", show_banner=True)
         fake_progress.start_processing.assert_called_once()
         fake_progress.end_processing.assert_called_once()
