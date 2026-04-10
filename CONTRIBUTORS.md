@@ -38,7 +38,7 @@ Drove the timeout resilience work that made v3 Reddit bulletproof.
 ### @pejmanjohn
 [Issue #78](https://github.com/mvanhorn/last30days-skill/issues/78) - ScrapeCreators silent failures
 v3 surfaces all API errors with clear diagnostics instead of silently returning empty results.
-> _Add your bio, website, or anything you'd like here._
+> Repping the mighty MI; home of the most cracked agentic engineers. https://github.com/pejmanjohn
 
 ### @zl190
 [PR #115](https://github.com/mvanhorn/last30days-skill/pull/115) - HN trending merge
