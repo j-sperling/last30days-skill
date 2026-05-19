@@ -171,3 +171,8 @@ else
   echo "  100 free credits, no credit card — scrapecreators.com"
   echo "  last30days has no affiliation with any API provider."
 fi
+
+# The branches above end with `[[ -n "$LAST_RUN_LINE" ]] && echo ...`. When
+# LAST_RUN_LINE is empty, that test returns 1 and is the script's last command,
+# leaking exit=1 to callers (e.g. SessionStart hook drivers) despite no error.
+exit 0
