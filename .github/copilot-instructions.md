@@ -12,9 +12,9 @@ This file contains Copilot-specific additions. See AGENTS.md for the shared cros
 Before suggesting a pull request:
 
 - Confirm that pytest passes.
-- If changes were made anywhere under skills/last30days/, confirm the install copy has been refreshed with:
-
-npx skills add . -g -y
+- Validate changes under `skills/last30days/` from source or an isolated development
+  harness profile. Follow AGENTS.md’s installation ownership boundary; PR preparation
+  does not refresh global skills or managed plugin caches.
 
 ## Vendor exclusion zone
 
