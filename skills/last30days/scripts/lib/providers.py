@@ -17,7 +17,6 @@ XAI_DEFAULT = "grok-4-1-fast"
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
-CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
 XAI_RESPONSES_URL = "https://api.x.ai/v1/responses"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # OpenRouter routes the Gemini Flash Lite tier as the -preview slug; that is the
@@ -25,6 +24,34 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # constant is suffix-free. If GEMINI_FLASH_LITE moves to a non-preview stable ID,
 # double-check that OpenRouter's slug still maps to the same upstream model.
 OPENROUTER_DEFAULT = "google/gemini-3.1-flash-lite-preview"
+
+
+_ENDPOINT_PATHS = {
+    OPENAI_RESPONSES_URL: "/responses",
+    XAI_RESPONSES_URL: "/responses",
+    OPENROUTER_URL: "/chat/completions",
+}
+
+
+def resolve_endpoint(env_var: str, default_url: str) -> str:
+    """Resolve a ``*_BASE_URL`` override into a full endpoint URL.
+
+    By the convention every OpenAI-compatible provider documents, ``*_BASE_URL``
+    names the API root (``https://host/v1``) and the client appends the endpoint
+    path. This module historically required the full endpoint URL instead, so a
+    value copied from a provider's setup guide POSTed to the API root and failed.
+
+    Accept both forms: an API root gets the endpoint path appended, and a value
+    that already ends with the endpoint path is used unchanged.
+    """
+    override = os.environ.get(env_var, "").strip()
+    if not override:
+        return default_url
+    override = override.rstrip("/")
+    path = _ENDPOINT_PATHS[default_url]
+    if override.endswith(path):
+        return override
+    return override + path
 
 
 class ReasoningClient:
@@ -101,10 +128,8 @@ class GeminiClient(ReasoningClient):
 class OpenAIClient(ReasoningClient):
     name = "openai"
 
-    def __init__(self, token: str, auth_source: str, account_id: str | None):
+    def __init__(self, token: str):
         self.token = token
-        self.auth_source = auth_source
-        self.account_id = account_id
 
     def generate_text(
         self,
@@ -115,29 +140,6 @@ class OpenAIClient(ReasoningClient):
         response_mime_type: str | None = None,
     ) -> str:
         del tools, response_mime_type
-        if self.auth_source == env.AUTH_SOURCE_CODEX:
-            payload = {
-                "model": model,
-                "stream": True,
-                "store": False,
-                "input": [
-                    {
-                        "type": "message",
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": prompt}],
-                    }
-                ],
-            }
-            headers = {
-                "Authorization": f"Bearer {self.token}",
-                "chatgpt-account-id": self.account_id or "",
-                "OpenAI-Beta": "responses=experimental",
-                "originator": "pi",
-                "Content-Type": "application/json",
-            }
-            raw = http.post_raw(CODEX_RESPONSES_URL, payload, headers=headers, timeout=90)
-            return extract_openai_text(_parse_codex_stream(raw))
-
         payload = {
             "model": model,
             "store": False,
@@ -145,7 +147,7 @@ class OpenAIClient(ReasoningClient):
             "temperature": 0,
         }
         response = http.post(
-            os.environ.get("OPENAI_BASE_URL", OPENAI_RESPONSES_URL),
+            resolve_endpoint("OPENAI_BASE_URL", OPENAI_RESPONSES_URL),
             payload,
             headers={
                 "Authorization": f"Bearer {self.token}",
@@ -176,7 +178,7 @@ class XAIClient(ReasoningClient):
             "input": [{"role": "user", "content": prompt}],
         }
         response = http.post(
-            os.environ.get("XAI_BASE_URL", XAI_RESPONSES_URL),
+            resolve_endpoint("XAI_BASE_URL", XAI_RESPONSES_URL),
             payload,
             headers={
                 "Authorization": f"Bearer {self.api_key}",
@@ -208,7 +210,7 @@ class OpenRouterClient(ReasoningClient):
             "temperature": 0,
         }
         response = http.post(
-            OPENROUTER_URL,
+            resolve_endpoint("OPENROUTER_BASE_URL", OPENROUTER_URL),
             payload,
             headers={
                 "Authorization": f"Bearer {self.api_key}",
@@ -310,9 +312,7 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
             x_search_backend=_resolve_x_backend(config),
         )
         return runtime, OpenAIClient(
-            openai_token,
-            config.get("OPENAI_AUTH_SOURCE") or env.AUTH_SOURCE_API_KEY,
-            config.get("OPENAI_CHATGPT_ACCOUNT_ID"),
+            openai_token
         )
 
     if provider_name == "xai":
@@ -343,9 +343,12 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
 
 
 def _resolve_x_backend(config: dict[str, Any]) -> str | None:
-    preferred = (config.get("LAST30DAYS_X_BACKEND") or "").lower()
-    if preferred in {"xai", "bird"}:
-        return preferred
+    """Resolve the X backend for runtime fetch.
+
+    Delegates to env.get_x_source which handles:
+    - Any known pin (X_BACKEND_KNOWN) exclusively: returns pin if available, None otherwise
+    - Unpinned: walks auto-chain (X_BACKEND_ORDER) only, never auto-selects opt-in backends
+    """
     return env.get_x_source(config)
 
 
@@ -406,64 +409,3 @@ def extract_openai_text(payload: dict[str, Any]) -> str:
     if payload:
         print(f"[Providers] extract_openai_text: no text in payload keys: {list(payload.keys())}", file=sys.stderr)
     return ""
-
-
-def _parse_sse_chunk(chunk: str) -> dict[str, Any] | None:
-    data_lines = [
-        line[5:].strip()
-        for line in chunk.split("\n")
-        if line.startswith("data:")
-    ]
-    if not data_lines:
-        return None
-    data = "\n".join(data_lines).strip()
-    if not data or data == "[DONE]":
-        return None
-    try:
-        return json.loads(data)
-    except json.JSONDecodeError:
-        print(f"[Providers] _parse_sse_chunk: invalid JSON: {data[:100]}", file=sys.stderr)
-        return None
-
-
-def _parse_codex_stream(raw: str) -> dict[str, Any]:
-    events: list[dict[str, Any]] = []
-    buffer = ""
-    for chunk in raw.splitlines(keepends=True):
-        buffer += chunk
-        while "\n\n" in buffer:
-            event_chunk, buffer = buffer.split("\n\n", 1)
-            event = _parse_sse_chunk(event_chunk)
-            if event is not None:
-                events.append(event)
-    if buffer.strip():
-        event = _parse_sse_chunk(buffer)
-        if event is not None:
-            events.append(event)
-
-    for event in reversed(events):
-        if event.get("type") == "response.completed" and isinstance(event.get("response"), dict):
-            return event["response"]
-        if isinstance(event.get("response"), dict):
-            return event["response"]
-
-    output_text = ""
-    for event in events:
-        delta = event.get("delta")
-        if isinstance(delta, str):
-            output_text += delta
-        text = event.get("text")
-        if isinstance(text, str):
-            output_text += text
-    if output_text:
-        return {
-            "output": [
-                {
-                    "type": "message",
-                    "content": [{"type": "output_text", "text": output_text}],
-                }
-            ]
-        }
-    if raw.strip():
-        print(f"[Providers] _parse_codex_stream: received {len(raw)} bytes but could not extract text", file=sys.stderr)
-    return {}

@@ -238,6 +238,41 @@ class HtmlRenderBehaviorTests(unittest.TestCase):
         self.assertNotIn("<a ", rendered)
         self.assertNotIn("href=", rendered)
 
+    def test_meta_marker_escapes_payload_through_pipeline(self):
+        """A META marker carrying markup must not render as live HTML.
+
+        The marker is exempted from the comment-strip pass and promoted into a
+        <div class="meta">. Its text can come from LLM-synthesized content
+        derived from untrusted source bodies, so a crafted
+        `<!-- META: <img src=x onerror=...> -->` must be escaped, not rendered.
+        """
+        md = "intro\n\n<!-- META: <img src=x onerror=alert(1)> -->\n\nmore"
+        body = html_render._markdown_to_html(md)
+        body = html_render._wrap_engine_footer(body)
+        body = html_render._promote_meta_marker(body)
+        self.assertNotIn("<img", body)
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", body)
+
+    def test_meta_marker_escapes_raw_fallback(self):
+        """The raw (unescaped) META fallback path must also escape its payload."""
+        body = html_render._promote_meta_marker(
+            "<!-- META: <img src=x onerror=alert(1)> -->"
+        )
+        self.assertNotIn("<img", body)
+        self.assertEqual(
+            body, '<div class="meta">&lt;img src=x onerror=alert(1)&gt;</div>'
+        )
+
+    def test_meta_marker_preserves_plain_text(self):
+        """Legitimate date/source-name markers render unchanged (no double-escape)."""
+        body = html_render._promote_meta_marker(
+            "<!-- META: 2026-01-01 to 2026-01-31 · reddit, x -->"
+        )
+        self.assertEqual(
+            body,
+            '<div class="meta">2026-01-01 to 2026-01-31 · reddit, x</div>',
+        )
+
     def test_markdown_links_allow_relative_url(self):
         rendered = html_render._markdown_to_html("[home](/path?x=1#section)")
         self.assertIn(
@@ -334,6 +369,35 @@ class HtmlCliIntegrationTests(unittest.TestCase):
         with self.subTest("suffix"):
             path = cli.compute_save_path_display("/tmp", report.topic, "v3", "html")
             self.assertTrue(path.endswith("/ai-agent-frameworks-raw-html-v3.html"))
+        with self.subTest("suffix_traversal_sanitized"):
+            # A suffix carrying path separators / parent refs must be sanitized
+            # to a flat token so it can never escape the save directory.
+            path = cli.compute_save_path_display("/tmp", report.topic, "../../etc", "html")
+            self.assertNotIn("..", path)
+            self.assertTrue(path.endswith("/ai-agent-frameworks-raw-html-etc.html"))
+
+    def test_save_suffix_cannot_escape_save_directory(self):
+        report = _report("AI Agent Frameworks", [])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = cli.save_output(report, "md", tmpdir, suffix="../../ESCAPED")
+            # The written file stays inside the intended directory, and the
+            # traversal fragment never lands in the filename.
+            self.assertEqual(Path(tmpdir).resolve(), out.parent)
+            self.assertNotIn("..", out.name)
+            self.assertTrue(out.name.startswith("ai-agent-frameworks-raw"))
+
+    def test_discover_save_suffix_cannot_escape_save_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = cli._save_discovery_output(
+                "# discovery\n",
+                domain="AI agents",
+                emit="md",
+                save_dir=tmpdir,
+                suffix="../../ESCAPED",
+            )
+            self.assertEqual(Path(tmpdir).resolve(), out.parent)
+            self.assertNotIn("..", out.name)
+            self.assertTrue(out.name.startswith("ai-agents-discover-raw"))
 
     def test_save_output_can_persist_comparison_html(self):
         reports = [

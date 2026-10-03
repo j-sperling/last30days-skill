@@ -155,6 +155,45 @@ class TestRunWithTimeout(unittest.TestCase):
                 timeout=1,
             )
 
+    def test_escalation_path_guards_killpg_attributeerror(self):
+        """The SIGKILL escalation must not crash if killpg is unavailable (Windows).
+
+        Regression for the #588 class of bug on the escalation path added in
+        #433: os.killpg raising AttributeError must be caught and fall back to
+        proc.kill(), so the documented SubprocTimeout surfaces instead of a bare
+        AttributeError. The primary SIGTERM path was already guarded (#552); this
+        mirrors that guard on the escalation path.
+        """
+        TimeoutExpired = subproc.subprocess.TimeoutExpired
+
+        class _FakeProc:
+            def __init__(self):
+                self.pid = 4321
+                self.kill_count = 0
+
+            def communicate(self, timeout=None):
+                raise TimeoutExpired(cmd="x", timeout=timeout)
+
+            def wait(self, timeout=None):
+                # First wait (timeout=5) forces the SIGKILL escalation branch;
+                # the final bounded wait is swallowed if the process still
+                # refuses to exit.
+                if timeout is not None:
+                    raise TimeoutExpired(cmd="x", timeout=timeout)
+                return 0
+
+            def kill(self):
+                self.kill_count += 1
+
+        fake = _FakeProc()
+        with patch.object(subproc.subprocess, "Popen", return_value=fake), \
+             patch.object(subproc.os, "getpgid", lambda pid: pid), \
+             patch.object(subproc.os, "killpg", side_effect=AttributeError("no killpg on Windows")):
+            with self.assertRaises(subproc.SubprocTimeout):
+                subproc.run_with_timeout(["x"], timeout=1)
+        # Both the primary and escalation paths must have fallen back to kill().
+        self.assertGreaterEqual(fake.kill_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

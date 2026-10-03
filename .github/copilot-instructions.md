@@ -15,6 +15,7 @@ Before suggesting a pull request:
 - Validate changes under `skills/last30days/` from source or an isolated development
   harness profile. Follow AGENTS.md’s installation ownership boundary; PR preparation
   does not refresh global skills or managed plugin caches.
+- For changes that belong in the next release notes, add a `changelog.d/<n>.<type>.md` fragment (do not edit `CHANGELOG.md` or bump version manifests). See `CONTRIBUTING.md` / `AGENTS.md` § Changelog and releases and fill the PR template’s Agent disclosure + Relationship sections.
 
 ## Vendor exclusion zone
 

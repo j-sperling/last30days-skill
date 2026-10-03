@@ -1,13 +1,21 @@
 """Post-research quality score and upgrade nudge.
 
-Computes a quality score based on 5 core sources and builds
+Computes a quality score based on the non-blocking core sources and builds
 a nudge message describing what the user missed and how to fix it.
+
+Fix text comes from ``lib.prescriptions`` (the single remediation
+vocabulary shared with the doctor command, KTD 7); only the trigger
+logic and the message framing live here.
 """
 
-from typing import List
+from typing import List, Optional
+
+from . import env, health, http, prescriptions, x_envelope
 
 
-# The 5 core sources
+# Sources whose absence can justify a post-run quality repair. X remains a
+# supported source, but it is optional: declining cookie access must not turn a
+# successful multi-source run into a setup prompt or a lower quality grade.
 CORE_SOURCES = ["hn", "polymarket", "x", "youtube", "reddit"]
 
 # Labels for display
@@ -22,6 +30,8 @@ SOURCE_LABELS = {
 
 def _is_x_active(config: dict, research_results: dict) -> bool:
     """Check if X source is active (has credentials AND didn't error)."""
+    if "x" in (research_results.get("active_sources") or []):
+        return not bool(research_results.get("x_error"))
     has_creds = _has_x_credentials(config)
     if not has_creds:
         return False
@@ -32,21 +42,62 @@ def _is_x_active(config: dict, research_results: dict) -> bool:
 
 
 def _has_x_credentials(config: dict) -> bool:
-    """Return True when any X/Twitter source credential is configured."""
-    return bool(
+    """Return True when any X/Twitter source credential is configured.
+
+    ``X_BEARER_TOKEN`` counts where the xapi backend can actually run: an
+    official-only host (it heads the auto chain there) or an explicit xapi
+    pin. An ambient bearer on any other host is not a configured X source,
+    so nothing changes there.
+    """
+    if (
         config.get("AUTH_TOKEN")
         or config.get("XAI_API_KEY")
         or config.get("XQUIK_API_KEY")
-    )
+    ):
+        return True
+    if config.get("X_BEARER_TOKEN"):
+        return "xapi" in env.x_auto_chain(config) or env.x_backend_pin(config) == "xapi"
+    return False
 
 
-def _is_youtube_active(config: dict, research_results: dict) -> bool:
-    """Check if YouTube source is active (yt-dlp installed)."""
+def _x_error_prescription(config: dict, research_results: dict) -> prescriptions.Prescription:
+    """The fix for a configured X that errored, routed through the X policy.
+
+    On an official-only host a credit-exhaustion error asks for a top-up
+    (``payment_required``) and every other error asks for a valid bearer or
+    the connector (``cookies_expired`` maps to ``bearer_invalid`` there);
+    elsewhere the entry is today's ``cookies_expired``.
+    """
+    message = str(research_results.get("x_error") or "")
+    if message.startswith(x_envelope.DETAIL_NOT_PASSED):
+        # The model declared the X connector lane and passed no envelope:
+        # the fix is the connector, on any host.
+        return prescriptions.for_x(config, "connector_missing")
+    failure = "cookies_expired"
+    if env.x_policy(config).hint_namespace == "official":
+        if http.classify_failure(message=message) == health.PAYMENT_REQUIRED:
+            failure = "payment_required"
+    return prescriptions.for_x(config, failure)
+
+
+def _has_ytdlp() -> bool:
+    """Return True when the local/free YouTube lane is available."""
     try:
         from . import youtube_yt
-        has_ytdlp = youtube_yt.is_ytdlp_installed()
+        return bool(youtube_yt.is_ytdlp_installed())
     except Exception:
-        has_ytdlp = False
+        return False
+
+
+def _youtube_returned_data(research_results: dict) -> bool:
+    """Return True when YouTube produced usable items through any provider."""
+    videos = int(research_results.get("youtube_videos_count") or 0)
+    transcripts = int(research_results.get("youtube_transcripts_count") or 0)
+    return videos > 0 or transcripts > 0
+
+
+def _is_youtube_active(config: dict, research_results: dict, *, has_ytdlp: bool) -> bool:
+    """Check if YouTube source is active (yt-dlp installed)."""
     if not has_ytdlp:
         return False
     if research_results.get("youtube_error"):
@@ -132,22 +183,23 @@ def _is_instagram_silent_failure(config: dict, research_results: dict) -> bool:
 
 
 def compute_quality_score(config: dict, research_results: dict) -> dict:
-    """Compute research quality score based on 5 core sources.
+    """Compute research quality score from the non-blocking core sources.
 
     Args:
         config: Configuration dict from env.get_config()
         research_results: Dict with keys like x_error, youtube_error,
             reddit_error reflecting what happened this run. Optional keys
             ``youtube_videos_count`` and ``youtube_transcripts_count`` enable
-            degraded-YouTube detection (transcript-fetch ratio below threshold).
+            degraded-YouTube detection (transcript-fetch ratio below threshold,
+            or fallback/provider data returned without local yt-dlp).
             Optional key ``instagram_items_count`` enables silent-failure
             detection for the bonus Instagram source.
 
     Returns:
         {
-            "score_pct": 40-100,
+            "score_pct": 0-100,
             "core_active": ["hn", "polymarket", ...],
-            "core_missing": ["x", "youtube"],
+            "core_missing": ["youtube"],
             "core_errored": [],          # configured but errored at top level
             "core_degraded": [],         # configured and returned items but quality below threshold
             "bonus_errored": [],         # bonus sources (Instagram, etc.) configured but silent
@@ -165,17 +217,25 @@ def compute_quality_score(config: dict, research_results: dict) -> dict:
     core_active.append("polymarket")
     core_active.append("reddit")
 
-    # X
-    has_x_creds = _has_x_credentials(config)
+    # X splits three ways. Active counts normally. Configured-but-errored is a
+    # real outage: it still docks the score and surfaces a repair, never an
+    # "optional omission". Only unconfigured/declined X leaves the denominator.
+    optional_omitted: List[str] = []
+    x_configured = _has_x_credentials(config) or (
+        "x" in (research_results.get("active_sources") or [])
+    )
     if _is_x_active(config, research_results):
         core_active.append("x")
-    else:
+    elif x_configured and research_results.get("x_error"):
         core_missing.append("x")
-        if has_x_creds and research_results.get("x_error"):
-            core_errored.append("x")
+        core_errored.append("x")
+    else:
+        optional_omitted.append("x")
 
     # YouTube
-    yt_active = _is_youtube_active(config, research_results)
+    has_ytdlp = _has_ytdlp()
+    yt_active = _is_youtube_active(config, research_results, has_ytdlp=has_ytdlp)
+    youtube_returned_data = _youtube_returned_data(research_results)
     if yt_active:
         core_active.append("youtube")
         # Active means yt-dlp is installed and search did not error at the top
@@ -185,14 +245,18 @@ def compute_quality_score(config: dict, research_results: dict) -> dict:
         threshold = float(config.get("DEGRADED_TRANSCRIPT_THRESHOLD") or DEFAULT_DEGRADED_TRANSCRIPT_THRESHOLD)
         if _is_youtube_degraded(research_results, threshold):
             core_degraded.append("youtube")
+    elif youtube_returned_data and not research_results.get("youtube_error"):
+        # YouTube produced data through a fallback/provider lane even though the
+        # local free yt-dlp lane is unavailable. Count the source as present,
+        # but surface it as degraded so users do not see the contradictory
+        # "Missing: YouTube" ending after a report with YouTube evidence.
+        # has_ytdlp is provably False here: yt_active is False and youtube_error
+        # is excluded by this guard, leaving unavailable yt-dlp as the cause.
+        core_active.append("youtube")
+        core_degraded.append("youtube")
     else:
         core_missing.append("youtube")
         # Check if configured but errored (yt-dlp installed but failed this run)
-        try:
-            from . import youtube_yt
-            has_ytdlp = youtube_yt.is_ytdlp_installed()
-        except Exception:
-            has_ytdlp = False
         if has_ytdlp and research_results.get("youtube_error"):
             core_errored.append("youtube")
 
@@ -201,10 +265,12 @@ def compute_quality_score(config: dict, research_results: dict) -> dict:
     if _is_instagram_silent_failure(config, research_results):
         bonus_errored.append("instagram")
 
-    score_pct = int(len(core_active) / 5 * 100)
+    scored_source_count = len(CORE_SOURCES) - len(optional_omitted)
+    score_pct = int(len(core_active) / scored_source_count * 100)
 
     has_sc = bool(config.get("SCRAPECREATORS_API_KEY"))
     active_sources = research_results.get("active_sources") or []
+    x_fix = _x_error_prescription(config, research_results) if "x" in core_errored else None
     nudge_text = _build_nudge_text(
         core_missing,
         core_errored,
@@ -213,6 +279,9 @@ def compute_quality_score(config: dict, research_results: dict) -> dict:
         has_sc=has_sc,
         active_sources=active_sources,
         bonus_errored=bonus_errored,
+        has_ytdlp=has_ytdlp,
+        core_total=scored_source_count,
+        x_fix=x_fix,
     ) if (core_missing or core_degraded or bonus_errored) else None
 
     return {
@@ -234,6 +303,9 @@ def _build_nudge_text(
     has_sc: bool = False,
     active_sources: list = None,
     bonus_errored: List[str] = None,
+    has_ytdlp: bool = False,
+    core_total: int | None = None,
+    x_fix: Optional[prescriptions.Prescription] = None,
 ) -> str:
     """Build human-readable nudge text describing what was missed or degraded.
 
@@ -254,8 +326,9 @@ def _build_nudge_text(
         else:
             missed_parts.append(label)
 
-    active_count = 5 - len(core_missing)
-    lines.append(f"Research quality: {active_count}/5 core sources.")
+    effective_total = core_total if core_total is not None else len(CORE_SOURCES)
+    active_count = effective_total - len(core_missing)
+    lines.append(f"Research quality: {active_count}/{effective_total} core sources.")
     if missed_parts:
         lines.append(f"Missing: {', '.join(missed_parts)}.")
     if core_degraded:
@@ -269,49 +342,64 @@ def _build_nudge_text(
     # Free suggestions
     free_suggestions: List[str] = []
 
-    if "x" in core_missing:
-        if "x" in core_errored:
-            free_suggestions.append(
-                "X/Twitter errored - log into x.com in your browser, then re-run."
-            )
-        else:
-            free_suggestions.append(
-                "X/Twitter: real-time posts with likes and reposts - the fastest "
-                "signal for breaking topics. Three options: log into x.com in your "
-                "browser and re-run (cookies detected automatically), or add "
-                "XAI_API_KEY to your .env (get key at api.x.ai), or add "
-                "XQUIK_API_KEY to your .env (get key at xquik.com)."
-            )
+    # A configured X that errored is the only X entry that can reach
+    # core_missing: unconfigured/declined X is an optional omission and never
+    # lands here. Surface the repair instead of hiding the outage.
+    if "x" in core_missing and "x" in core_errored:
+        if x_fix is None:
+            x_fix = prescriptions.get("x", "cookies_expired")
+        free_suggestions.append(f"X/Twitter errored - {x_fix.fix_nl}.")
 
     if "youtube" in core_missing:
         if "youtube" in core_errored:
+            yt_fix = prescriptions.get("youtube", "ytdlp_stale")
             free_suggestions.append(
-                "YouTube errored - update yt-dlp: brew upgrade yt-dlp"
+                f"YouTube errored - update yt-dlp: {yt_fix.fix_cli}"
             )
         else:
+            yt_fix = prescriptions.get("youtube", "ytdlp_missing")
             free_suggestions.append(
                 "YouTube: video transcripts with key moments - often the deepest "
-                "explanations on any topic. Install yt-dlp: brew install yt-dlp (free)"
+                f"explanations on any topic. Install yt-dlp: {yt_fix.fix_cli} (free)"
             )
 
     if "youtube" in core_degraded:
         videos = int(research_results.get("youtube_videos_count") or 0)
         transcripts = int(research_results.get("youtube_transcripts_count") or 0)
         captions_disabled = int(research_results.get("youtube_captions_disabled_count") or 0)
-        captions_note = ""
-        if captions_disabled > 0:
-            captions_note = (
-                f" ({captions_disabled} of those had captions disabled by the "
-                "uploader, which is a separate cause and not fixable on your end)"
+        if not has_ytdlp and _youtube_returned_data(research_results):
+            install = prescriptions.get("youtube", "ytdlp_missing")
+            # Tolerant lookup: alt_cli makes no arity promise, so an entry
+            # gaining/losing a platform alternate must degrade the wording,
+            # never crash the nudge path.
+            scoop_install = install.alt_cli[0] if len(install.alt_cli) > 0 else install.fix_cli
+            pip_install = install.alt_cli[1] if len(install.alt_cli) > 1 else scoop_install
+            free_suggestions.append(
+                f"YouTube returned {videos} videos and {transcripts} transcripts "
+                "through a fallback/provider path, but local yt-dlp is not "
+                "installed. Install yt-dlp to enable the free local YouTube lane "
+                f"and reduce reliance on fallback providers: {install.fix_cli} "
+                f"(macOS), {scoop_install} (Windows), or {pip_install}."
             )
-        free_suggestions.append(
-            f"YouTube returned {videos} videos but only {transcripts} transcripts "
-            f"captured{captions_note}. The most common remaining cause is a stale "
-            "yt-dlp binary - YouTube's caption format changes frequently and old "
-            "binaries silently fail every transcript. Update via your package "
-            "manager: scoop update yt-dlp (Windows), brew upgrade yt-dlp (macOS), "
-            "or pip install -U yt-dlp."
-        )
+        else:
+            captions_note = ""
+            if captions_disabled > 0:
+                captions_note = (
+                    f" ({captions_disabled} of those had captions disabled by the "
+                    "uploader, which is a separate cause and not fixable on your end)"
+                )
+            update = prescriptions.get("youtube", "ytdlp_stale")
+            # Same tolerant lookup as the install branch above.
+            scoop_update = update.alt_cli[0] if len(update.alt_cli) > 0 else update.fix_cli
+            pip_update = update.alt_cli[1] if len(update.alt_cli) > 1 else scoop_update
+            free_suggestions.append(
+                f"YouTube returned {videos} videos but only {transcripts} transcripts "
+                f"captured{captions_note}. The most common remaining cause is a stale "
+                "yt-dlp binary - YouTube's caption format changes frequently and old "
+                "binaries silently fail every transcript. Update via your package "
+                f"manager: {scoop_update} (Windows), {update.fix_cli} (macOS), "
+                f"or {pip_update}."
+            )
 
     if "instagram" in bonus_errored:
         free_suggestions.append(

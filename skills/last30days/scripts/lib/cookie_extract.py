@@ -69,12 +69,31 @@ def _get_firefox_profiles_dir() -> Optional[Path]:
     if system == "Darwin":
         path = Path.home() / "Library" / "Application Support" / "Firefox"
     elif system == "Linux":
+        # Default location for most distros
         path = Path.home() / ".mozilla" / "firefox"
+        if path.is_dir():
+            return path
+        # Some distros (e.g. Fedora) honour $XDG_CONFIG_HOME
+        xdg_config = os.environ.get("XDG_CONFIG_HOME")
+        if xdg_config and os.path.isabs(xdg_config):
+            path = Path(xdg_config) / "mozilla" / "firefox"
+        else:
+            path = Path.home() / ".config" / "mozilla" / "firefox"
     else:
         # Windows: %APPDATA%\Mozilla\Firefox — best-effort
         appdata = Path.home() / "AppData" / "Roaming" / "Mozilla" / "Firefox"
         path = appdata
     return path if path.is_dir() else None
+
+
+def _load_profiles_ini(ini_path: Path) -> configparser.ConfigParser:
+    """Parse Firefox profiles.ini, retrying UTF-16 LE used on Windows (#1067)."""
+    config = configparser.ConfigParser()
+    try:
+        config.read(str(ini_path), encoding="utf-8")
+    except UnicodeDecodeError:
+        config.read(str(ini_path), encoding="utf-16")
+    return config
 
 
 def _find_default_profile(profiles_dir: Path) -> Optional[Path]:
@@ -87,8 +106,7 @@ def _find_default_profile(profiles_dir: Path) -> Optional[Path]:
 
     if ini_path.is_file():
         try:
-            config = configparser.ConfigParser()
-            config.read(str(ini_path), encoding="utf-8")
+            config = _load_profiles_ini(ini_path)
 
             # First pass: Install* section (Firefox >= 67 format, takes priority)
             for section in config.sections():
@@ -109,7 +127,7 @@ def _find_default_profile(profiles_dir: Path) -> Optional[Path]:
                     resolved = _resolve_profile_path(profiles_dir, config, section)
                     if resolved and resolved.is_dir():
                         return resolved
-        except (configparser.Error, OSError) as exc:
+        except (configparser.Error, OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to parse profiles.ini: %s", exc)
 
     # Fallback: scan directory for anything that looks like a profile
@@ -157,7 +175,12 @@ def _query_cookies_db(
     tmp_path = None
     try:
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".sqlite")
-        shutil.copy2(str(db_path), tmp_path)
+        # mkstemp creates the file 0600. copy2 would copy the source's mode
+        # (Firefox cookies.sqlite is commonly 0644, looser on WSL /mnt/c) onto
+        # the temp file, leaving live session secrets world-readable in shared
+        # /tmp until the chmod below runs. copyfile writes content only and
+        # leaves the 0600 perms intact, closing that window.
+        shutil.copyfile(str(db_path), tmp_path)
         _lock_temp_cookie_copy(tmp_path)
 
         conn = sqlite3.connect(tmp_path)

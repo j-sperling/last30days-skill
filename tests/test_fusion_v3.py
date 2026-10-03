@@ -435,3 +435,162 @@ class TestUrlNormalization(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutOfWindowSortTests(unittest.TestCase):
+    def _candidate(self, name: str, published_at: str | None, confidence: str, rrf: float) -> schema.Candidate:
+        item = schema.SourceItem(
+            item_id=name,
+            source="youtube",
+            title=name,
+            body="body",
+            url=f"https://youtube.com/watch?v={name}",
+            published_at=published_at,
+            date_confidence=confidence,
+        )
+        return schema.Candidate(
+            candidate_id=name,
+            item_id=name,
+            source="youtube",
+            title=name,
+            url=item.url,
+            snippet="snippet",
+            subquery_labels=["primary"],
+            native_ranks={"primary:youtube": 1},
+            local_relevance=0.9,
+            freshness=90,
+            engagement=60.0,
+            source_quality=0.85,
+            rrf_score=rrf,
+            source_items=[item],
+        )
+
+    def test_out_of_window_sorts_below_in_window(self):
+        stale = self._candidate("stale", "2025-10-15", "low", rrf=0.9)
+        fresh = self._candidate("fresh", "2026-07-20", "high", rrf=0.01)
+        ordered = sorted([stale, fresh], key=fusion._candidate_sort_key)
+        self.assertEqual(["fresh", "stale"], [c.candidate_id for c in ordered])
+
+    def test_undated_candidate_keeps_its_place(self):
+        undated = self._candidate("undated", None, "low", rrf=0.9)
+        dated = self._candidate("dated", "2026-07-20", "high", rrf=0.01)
+        ordered = sorted([dated, undated], key=fusion._candidate_sort_key)
+        self.assertEqual(["undated", "dated"], [c.candidate_id for c in ordered])
+
+    def test_adapter_high_confidence_outside_window_is_still_stale(self):
+        """Adapters may supply date_confidence='high' for old dates.
+
+        The window membership must be derived from the actual date compared to
+        the run window, not solely from adapter-provided date_confidence.
+        """
+        item = schema.SourceItem(
+            item_id="old_job",
+            source="jobs",
+            title="Old job posting",
+            body="body",
+            url="https://example.com/job",
+            published_at="2025-10-15",
+            date_confidence="high",
+        )
+        stale_with_high_confidence = schema.Candidate(
+            candidate_id="stale_high",
+            item_id="old_job",
+            source="jobs",
+            title="Old job posting",
+            url="https://example.com/job",
+            snippet="snippet",
+            subquery_labels=["primary"],
+            native_ranks={"primary:jobs": 1},
+            local_relevance=0.9,
+            freshness=90,
+            engagement=60.0,
+            source_quality=0.85,
+            rrf_score=0.9,
+            source_items=[item],
+            metadata={"range_from": "2026-06-15", "range_to": "2026-07-15"},
+        )
+        fresh = self._candidate("fresh", "2026-07-10", "high", rrf=0.01)
+        fresh.metadata["range_from"] = "2026-06-15"
+        fresh.metadata["range_to"] = "2026-07-15"
+
+        self.assertTrue(schema.candidate_out_of_window(stale_with_high_confidence))
+        self.assertFalse(schema.candidate_out_of_window(fresh))
+
+        ordered = sorted([stale_with_high_confidence, fresh], key=fusion._candidate_sort_key)
+        self.assertEqual(["fresh", "stale_high"], [c.candidate_id for c in ordered])
+
+
+def _comments(n: int) -> list[dict]:
+    return [{"score": 100 - i, "author": f"u{i}", "excerpt": f"comment {i}"} for i in range(n)]
+
+
+class FusionEnrichedCopyTests(unittest.TestCase):
+    """Same thread, two subquery streams, per-stream ids collide (R1 / R1):
+    the candidate must keep the copy that carries the enrichment."""
+
+    def _plan(self):
+        return schema.QueryPlan(
+            intent="breaking_news",
+            freshness_mode="strict_recent",
+            cluster_mode="story",
+            raw_topic="kanye west",
+            subqueries=[
+                schema.SubQuery(label="primary", search_query="kanye west", ranking_query="kanye west", sources=["reddit"], weight=1.0),
+                schema.SubQuery(label="russia", search_query="kanye russia", ranking_query="kanye russia", sources=["reddit"], weight=0.8),
+            ],
+            source_weights={},
+        )
+
+    def test_enriched_second_copy_is_kept(self):
+        url = "https://www.reddit.com/r/Music/comments/1vy0ilk/kanye_wests_soldout_russia/"
+        bare = make_item("R1", "reddit", url, "Kanye West's Russia shows canceled", 0.6)
+        rich = make_item("R1", "reddit", url, "Kanye West's Russia shows canceled", 0.3)
+        rich.metadata["top_comments"] = _comments(10)
+        rich.metadata["comment_insights"] = ["Putin doesn't care"]
+        rich.engagement = {"score": 20859, "num_comments": 741}
+        bare.engagement = {"score": 18941, "num_comments": 713}
+        streams = {("primary", "reddit"): [bare], ("russia", "reddit"): [rich]}
+
+        candidates = fusion.weighted_rrf(streams, self._plan(), pool_limit=10)
+
+        self.assertEqual(1, len(candidates))
+        cand = candidates[0]
+        self.assertEqual(1, len(cand.source_items))
+        self.assertEqual(10, len(cand.source_items[0].metadata["top_comments"]))
+        self.assertEqual(["Putin doesn't care"], cand.source_items[0].metadata["comment_insights"])
+        self.assertEqual(20859, cand.source_items[0].engagement["score"])
+        self.assertEqual({"primary:reddit", "russia:reddit"}, set(cand.native_ranks))
+
+    def test_enriched_first_copy_is_retained(self):
+        url = "https://www.reddit.com/r/Music/comments/1vy0ilk/kanye_wests_soldout_russia/"
+        rich = make_item("R1", "reddit", url, "Kanye West's Russia shows canceled", 0.6)
+        rich.metadata["top_comments"] = _comments(4)
+        bare = make_item("R1", "reddit", url, "Kanye West's Russia shows canceled", 0.3)
+        streams = {("primary", "reddit"): [rich], ("russia", "reddit"): [bare]}
+
+        candidates = fusion.weighted_rrf(streams, self._plan(), pool_limit=10)
+
+        self.assertEqual(4, len(candidates[0].source_items[0].metadata["top_comments"]))
+
+    def test_distinct_urls_with_colliding_ids_stay_separate(self):
+        a = make_item("R1", "reddit", "https://www.reddit.com/r/Kanye/comments/aaa/one/", "Thread one", 0.6)
+        b = make_item("R1", "reddit", "https://www.reddit.com/r/Kanye/comments/bbb/two/", "Thread two", 0.5)
+        streams = {("primary", "reddit"): [a], ("russia", "reddit"): [b]}
+
+        candidates = fusion.weighted_rrf(streams, self._plan(), pool_limit=10)
+
+        self.assertEqual(2, len(candidates))
+
+    def test_collapse_duplicate_urls_merges_enrichment(self):
+        url = "https://www.reddit.com/r/Music/comments/1vy0ilk/kanye/"
+        bare = make_item("R1", "reddit", url, "Kanye", 0.6)
+        rich = make_item("R1", "reddit", url, "Kanye", 0.3)
+        rich.metadata["top_comments"] = _comments(3)
+        other = make_item("R2", "reddit", "https://www.reddit.com/r/Kanye/comments/zzz/other/", "Other", 0.4)
+
+        out = fusion.collapse_duplicate_urls([bare, rich, other])
+
+        self.assertEqual(2, len(out))
+        self.assertIs(out[0], bare)
+        self.assertEqual(3, len(out[0].metadata["top_comments"]))
+        self.assertIs(out[1], other)

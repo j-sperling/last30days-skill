@@ -10,7 +10,9 @@ Covers:
 
 from __future__ import annotations
 
+import os
 import re
+import shlex
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -20,6 +22,66 @@ import pytest
 from lib import env
 
 SETUP_KEYCHAIN_SH = Path(__file__).resolve().parents[1] / "skills" / "last30days" / "scripts" / "setup-keychain.sh"
+
+
+def _plaintext_presence_checks(script: str) -> list[str]:
+    # Join shell continuations before tokenizing so a split -w cannot hide.
+    logical = re.sub(r"\\\r?\n", " ", script)
+    offenders = []
+    for line in logical.splitlines():
+        code = " ".join(shlex.split(line, comments=True))
+        if re.search(r"find-generic-password\b.*\s-[wg](?=\s|[;>|&]|$)", code):
+            offenders.append(line)
+    return offenders
+
+
+def test_setup_presence_checks_do_not_request_plaintext():
+    assert not _plaintext_presence_checks(SETUP_KEYCHAIN_SH.read_text(encoding="utf-8"))
+
+
+def test_presence_guard_detects_multiline_password_flags():
+    script = (
+        "security find-generic-password \\\n"
+        '    -a "$USER" \\\n'
+        "    -w >/dev/null"
+    )
+    assert _plaintext_presence_checks(script)
+    assert not _plaintext_presence_checks('# security find-generic-password -w\n')
+
+
+@pytest.mark.parametrize("existed,replace,value,summary", [
+    (True, False, "", "added=0 replaced=0 skipped=1"),
+    (False, False, "DUMMY-VALUE\n", "added=1 replaced=0 skipped=0"),
+    (True, True, "DUMMY-VALUE\n", "added=0 replaced=1 skipped=0"),
+])
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell fixture")
+def test_setup_presence_and_counters_use_stub_security(tmp_path, existed, replace, value, summary):
+    stub = tmp_path / "security"
+    stub.write_text(
+        '#!/bin/sh\n'
+        'printf "%s\\n" "$1" >> "$STUB_LOG"\n'
+        'case "$1" in\n'
+        '  find-generic-password) exit "$STUB_STATUS" ;;\n'
+        '  add-generic-password) exit 0 ;;\n'
+        '  *) exit 99 ;;\n'
+        'esac\n', encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    log_path = tmp_path / "calls"
+    command = ["/bin/bash", str(SETUP_KEYCHAIN_SH)]
+    if replace:
+        command.append("--replace")
+    command.append("OPENAI_API_KEY")
+    result = subprocess.run(
+        command, input=value, text=True, capture_output=True, timeout=5,
+        env={"PATH": str(tmp_path), "USER": "fixture-user", "OSTYPE": "darwin",
+             "STUB_LOG": str(log_path), "STUB_STATUS": "0" if existed else "44"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert summary in result.stdout
+    assert "DUMMY-VALUE" not in result.stdout + result.stderr
+    calls = log_path.read_text().splitlines()
+    assert calls == ["find-generic-password"] + ([] if existed and not replace else ["add-generic-password"])
 
 # ---------------------------------------------------------------------------
 # _load_keychain unit tests
@@ -41,6 +103,76 @@ def _run_result(returncode: int, stdout: str = "") -> subprocess.CompletedProces
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr="")
 
 
+def test_load_keychain_returns_empty_when_disable_switch_set(monkeypatch):
+    """The opt-out must win on Darwin with `security` present and a key stored.
+
+    Deliberately mocked past the platform/binary early-returns above: if the
+    switch were dropped, neither of those would cover this case and this goes red.
+    """
+    monkeypatch.setenv(env.KEYCHAIN_DISABLE_ENV, "1")
+    with mock.patch("platform.system", return_value="Darwin"), \
+         mock.patch("shutil.which", return_value="/usr/bin/security"), \
+         mock.patch("subprocess.run", return_value=_run_result(0, "should-not-be-read")) as run:
+        assert env._load_keychain(["XAI_API_KEY"]) == {}
+    # Proves the opt-out short-circuits BEFORE any lookup, not merely that the
+    # returned dict came back empty.
+    run.assert_not_called()
+
+
+def test_load_keychain_reads_key_when_disable_switch_absent(monkeypatch):
+    """Counterexample for the test above: same mocks, switch off -> the key IS read.
+
+    Without this pair, `_load_keychain(...) == {}` could pass for the wrong
+    reason and nobody would notice.
+    """
+    monkeypatch.delenv(env.KEYCHAIN_DISABLE_ENV, raising=False)
+    with mock.patch("platform.system", return_value="Darwin"), \
+         mock.patch("shutil.which", return_value="/usr/bin/security"), \
+         mock.patch("subprocess.run", return_value=_run_result(0, "xai-secret")):
+        assert env._load_keychain(["XAI_API_KEY"]) == {"XAI_API_KEY": "xai-secret"}
+
+
+def test_load_keychain_disable_switch_ignores_falsy_values(monkeypatch):
+    """`LAST30DAYS_SKIP_KEYCHAIN=0` / empty must NOT disable the source."""
+    for falsy in ("0", "", "false", "no"):
+        monkeypatch.setenv(env.KEYCHAIN_DISABLE_ENV, falsy)
+        with mock.patch("platform.system", return_value="Darwin"), \
+             mock.patch("shutil.which", return_value="/usr/bin/security"), \
+             mock.patch("subprocess.run", return_value=_run_result(0, "xai-secret")):
+            assert env._load_keychain(["XAI_API_KEY"]) == {"XAI_API_KEY": "xai-secret"}, falsy
+
+
+def test_parse_keychain_aliases_accepts_string_and_object_forms():
+    raw = (
+        '{"XAI_API_KEY":"existing-xai-api-key",'
+        '"BRAVE_API_KEY":{"account":"keychain-user","service":"existing-brave-api-key"}}'
+    )
+    assert env._parse_keychain_aliases(raw) == {
+        "XAI_API_KEY": [{"service": "existing-xai-api-key", "account": ""}],
+        "BRAVE_API_KEY": [{"service": "existing-brave-api-key", "account": "keychain-user"}],
+    }
+
+
+def test_parse_keychain_aliases_accepts_ordered_fallback_list():
+    raw = '{"XAI_API_KEY":[{"service":"primary-xai"},{"account":"keychain-user","service":"fallback-xai"}]}'
+    assert env._parse_keychain_aliases(raw) == {
+        "XAI_API_KEY": [
+            {"service": "primary-xai", "account": ""},
+            {"service": "fallback-xai", "account": "keychain-user"},
+        ],
+    }
+
+
+def test_parse_keychain_aliases_warns_on_invalid_json_and_ignores_unknown_keys(capsys):
+    assert env._parse_keychain_aliases("not json") == {}
+    warning = capsys.readouterr().err
+    assert "LAST30DAYS_KEYCHAIN_ALIASES is not valid JSON" in warning
+    assert "canonical lookups enabled" in warning
+
+    assert env._parse_keychain_aliases('{"NOT_A_KEY":"secret-service"}') == {}
+    assert capsys.readouterr().err == ""
+
+
 def test_load_keychain_loads_present_keys_skips_missing():
     def fake_run(cmd, **kwargs):
         service = cmd[cmd.index("-s") + 1]
@@ -56,6 +188,49 @@ def test_load_keychain_loads_present_keys_skips_missing():
         result = env._load_keychain(["XAI_API_KEY", "BRAVE_API_KEY", "OPENAI_API_KEY"])
 
     assert result == {"XAI_API_KEY": "xai-abc", "BRAVE_API_KEY": "brv-xyz"}
+
+
+def test_load_keychain_uses_alias_when_canonical_missing():
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        account = cmd[cmd.index("-a") + 1]
+        service = cmd[cmd.index("-s") + 1]
+        calls.append((account, service))
+        if account == "keychain-user" and service == "existing-xai-api-key":
+            return _run_result(0, "xai-alias\n")
+        return _run_result(44)
+
+    aliases = {"XAI_API_KEY": [{"account": "keychain-user", "service": "existing-xai-api-key"}]}
+    with mock.patch("platform.system", return_value="Darwin"), \
+         mock.patch("shutil.which", return_value="/usr/bin/security"), \
+         mock.patch.dict("os.environ", {"USER": "mortimer"}, clear=False), \
+         mock.patch("subprocess.run", side_effect=fake_run):
+        result = env._load_keychain(["XAI_API_KEY"], aliases)
+
+    assert result == {"XAI_API_KEY": "xai-alias"}
+    assert calls == [
+        ("mortimer", "last30days-XAI_API_KEY"),
+        ("keychain-user", "existing-xai-api-key"),
+    ]
+
+
+def test_load_keychain_canonical_wins_over_alias():
+    def fake_run(cmd, **kwargs):
+        service = cmd[cmd.index("-s") + 1]
+        if service == "last30days-XAI_API_KEY":
+            return _run_result(0, "xai-canonical\n")
+        if service == "existing-xai-api-key":
+            return _run_result(0, "xai-alias\n")
+        return _run_result(44)
+
+    aliases = {"XAI_API_KEY": [{"account": "keychain-user", "service": "existing-xai-api-key"}]}
+    with mock.patch("platform.system", return_value="Darwin"), \
+         mock.patch("shutil.which", return_value="/usr/bin/security"), \
+         mock.patch("subprocess.run", side_effect=fake_run):
+        result = env._load_keychain(["XAI_API_KEY"], aliases)
+
+    assert result == {"XAI_API_KEY": "xai-canonical"}
 
 
 def test_load_keychain_strips_whitespace_and_newlines():
@@ -101,7 +276,7 @@ def clean_env(monkeypatch, tmp_path):
         "OPENAI_API_KEY", "XAI_API_KEY", "BRAVE_API_KEY", "AUTH_TOKEN", "CT0",
         "SCRAPECREATORS_API_KEY", "APIFY_API_TOKEN", "BSKY_HANDLE",
         "BSKY_APP_PASSWORD", "TRUTHSOCIAL_TOKEN", "EXA_API_KEY",
-        "SERPER_API_KEY", "OPENROUTER_API_KEY", "PARALLEL_API_KEY",
+        "SERPER_API_KEY", "OPENROUTER_API_KEY", "PERPLEXITY_API_KEY", "PARALLEL_API_KEY",
         "XQUIK_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
         "GOOGLE_GENAI_API_KEY", "INCLUDE_SOURCES", "FROM_BROWSER",
     ]:
@@ -143,6 +318,45 @@ def test_get_config_global_file_outranks_keychain(clean_env, tmp_path, monkeypat
     assert cfg["_CONFIG_SOURCE"].startswith("global:")
 
 
+def test_get_config_passes_aliases_from_global_file(clean_env, tmp_path, monkeypatch):
+    cfg_file = tmp_path / "global.env"
+    cfg_file.write_text(
+        'LAST30DAYS_KEYCHAIN_ALIASES={"XAI_API_KEY":{"account":"keychain-user","service":"existing-xai-api-key"}}\n'
+    )
+    monkeypatch.setattr(env, "CONFIG_FILE", cfg_file)
+
+    def fake_load_keychain(keys, aliases=None):
+        assert aliases == {
+            "XAI_API_KEY": [{"account": "keychain-user", "service": "existing-xai-api-key"}],
+        }
+        return {"XAI_API_KEY": "xai-from-alias"}
+
+    with mock.patch.object(env, "_load_keychain", side_effect=fake_load_keychain):
+        cfg = env.get_config()
+
+    assert cfg["XAI_API_KEY"] == "xai-from-alias"
+    assert cfg["LAST30DAYS_KEYCHAIN_ALIASES"].startswith('{"XAI_API_KEY"')
+
+
+def test_get_config_passes_aliases_from_process_env(clean_env, monkeypatch):
+    monkeypatch.setenv(
+        "LAST30DAYS_KEYCHAIN_ALIASES",
+        '{"XAI_API_KEY":{"account":"keychain-user","service":"existing-xai-api-key"}}',
+    )
+
+    def fake_load_keychain(keys, aliases=None):
+        assert aliases == {
+            "XAI_API_KEY": [{"account": "keychain-user", "service": "existing-xai-api-key"}],
+        }
+        return {"XAI_API_KEY": "xai-from-env-alias"}
+
+    with mock.patch.object(env, "_load_keychain", side_effect=fake_load_keychain):
+        cfg = env.get_config()
+
+    assert cfg["XAI_API_KEY"] == "xai-from-env-alias"
+    assert cfg["LAST30DAYS_KEYCHAIN_ALIASES"].startswith('{"XAI_API_KEY"')
+
+
 def test_get_config_openai_key_can_come_from_keychain(clean_env):
     """OPENAI_API_KEY must be visible to get_openai_auth via the keychain
     merge — wiring regression test."""
@@ -176,3 +390,10 @@ def test_keychain_keys_match_setup_script():
         "lib/env.py::KEYCHAIN_KEYS and scripts/setup-keychain.sh::ALL_KEYS "
         f"have drifted.\n  python: {python_keys}\n  shell:  {shell_keys}"
     )
+
+
+def test_x_bearer_token_is_a_keychain_key():
+    """U6/R17: the X API bearer is loadable from the Keychain and listed by
+    the setup-keychain.sh helper (parity is enforced above)."""
+    assert "X_BEARER_TOKEN" in env.KEYCHAIN_KEYS
+    assert _parse_all_keys_from_shell(SETUP_KEYCHAIN_SH).count("X_BEARER_TOKEN") == 1

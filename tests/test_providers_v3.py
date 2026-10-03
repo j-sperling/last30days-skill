@@ -1,6 +1,10 @@
 import json
+import os
 import unittest
+from unittest import mock
+from typing import get_args
 
+from lib import env
 from lib import providers
 
 
@@ -63,6 +67,15 @@ class ProvidersV3Tests(unittest.TestCase):
                 depth="default",
             )
 
+    def test_codex_auth_is_not_supported_as_openai_provider_auth(self):
+        self.assertNotIn("codex", get_args(env.AuthSource))
+        self.assertFalse(hasattr(env, "AUTH_SOURCE_CODEX"))
+
+    def test_openai_provider_has_no_chatgpt_backend_route(self):
+        self.assertFalse(hasattr(providers, "CODEX_RESPONSES_URL"))
+        with self.assertRaises(TypeError):
+            providers.OpenAIClient("token", "codex", "acct")
+
 
 class TestExtractJson(unittest.TestCase):
     def test_direct_json(self):
@@ -124,39 +137,59 @@ class TestExtractGeminiText(unittest.TestCase):
         self.assertEqual("", providers.extract_gemini_text({}))
 
 
-class TestParseSSEChunk(unittest.TestCase):
-    def test_valid_chunk(self):
-        chunk = 'data: {"type": "delta", "text": "hi"}'
-        result = providers._parse_sse_chunk(chunk)
-        self.assertEqual(result, {"type": "delta", "text": "hi"})
-
-    def test_done_sentinel(self):
-        self.assertIsNone(providers._parse_sse_chunk("data: [DONE]"))
-
-    def test_no_data_lines(self):
-        self.assertIsNone(providers._parse_sse_chunk("event: ping"))
-
-    def test_invalid_json(self):
-        self.assertIsNone(providers._parse_sse_chunk("data: {bad json"))
-
-
-class TestParseCodexStream(unittest.TestCase):
-    def test_response_completed_event(self):
-        stream = 'data: {"type": "response.completed", "response": {"output_text": "done"}}\n\n'
-        result = providers._parse_codex_stream(stream)
-        self.assertEqual(result["output_text"], "done")
-
-    def test_delta_text_accumulation(self):
-        stream = 'data: {"delta": "hel"}\n\ndata: {"delta": "lo"}\n\n'
-        result = providers._parse_codex_stream(stream)
-        text = providers.extract_openai_text(result)
-        self.assertEqual(text, "hello")
-
-    def test_empty_stream(self):
-        self.assertEqual({}, providers._parse_codex_stream(""))
-
-    def test_done_only_stream(self):
-        self.assertEqual({}, providers._parse_codex_stream("data: [DONE]\n\n"))
-
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResolveEndpointTests(unittest.TestCase):
+    """``*_BASE_URL`` accepts an API root as well as a full endpoint URL."""
+
+    def _resolve(self, value, env_var="OPENAI_BASE_URL", default=None):
+        default = default or providers.OPENAI_RESPONSES_URL
+        patched = {} if value is None else {env_var: value}
+        with mock.patch.dict(os.environ, patched, clear=True):
+            return providers.resolve_endpoint(env_var, default)
+
+    def test_unset_uses_default_endpoint(self):
+        self.assertEqual(providers.OPENAI_RESPONSES_URL, self._resolve(None))
+
+    def test_blank_value_uses_default_endpoint(self):
+        self.assertEqual(providers.OPENAI_RESPONSES_URL, self._resolve("   "))
+
+    def test_api_root_gets_endpoint_path_appended(self):
+        self.assertEqual(
+            "https://example.test/v1/responses",
+            self._resolve("https://example.test/v1"),
+        )
+
+    def test_trailing_slash_is_normalised(self):
+        self.assertEqual(
+            "https://example.test/v1/responses",
+            self._resolve("https://example.test/v1/"),
+        )
+
+    def test_full_endpoint_url_is_preserved(self):
+        self.assertEqual(
+            "https://example.test/v1/responses",
+            self._resolve("https://example.test/v1/responses"),
+        )
+
+    def test_openrouter_uses_chat_completions_path(self):
+        self.assertEqual(
+            "https://example.test/api/v1/chat/completions",
+            self._resolve(
+                "https://example.test/api/v1",
+                env_var="OPENROUTER_BASE_URL",
+                default=providers.OPENROUTER_URL,
+            ),
+        )
+
+    def test_openrouter_full_endpoint_url_is_preserved(self):
+        self.assertEqual(
+            "https://example.test/api/v1/chat/completions",
+            self._resolve(
+                "https://example.test/api/v1/chat/completions",
+                env_var="OPENROUTER_BASE_URL",
+                default=providers.OPENROUTER_URL,
+            ),
+        )

@@ -1,5 +1,8 @@
+# fmt: off
+import contextlib
 import json
 import io
+import os
 import shutil
 import tempfile
 import subprocess
@@ -7,6 +10,7 @@ import sys
 import types
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -17,9 +21,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class CliV3Tests(unittest.TestCase):
-    def make_report(self) -> schema.Report:
+    def make_report(self, topic: str = "OpenClaw vs NanoClaw") -> schema.Report:
         return schema.Report(
-            topic="OpenClaw vs NanoClaw",
+            topic=topic,
             range_from="2026-02-14",
             range_to="2026-03-16",
             generated_at="2026-03-16T00:00:00+00:00",
@@ -32,12 +36,12 @@ class CliV3Tests(unittest.TestCase):
                 intent="comparison",
                 freshness_mode="balanced_recent",
                 cluster_mode="debate",
-                raw_topic="OpenClaw vs NanoClaw",
+                raw_topic=topic,
                 subqueries=[
                     schema.SubQuery(
                         label="primary",
-                        search_query="openclaw vs nanoclaw",
-                        ranking_query="How does OpenClaw compare to NanoClaw?",
+                        search_query=topic.lower(),
+                        ranking_query=f"What are people saying about {topic}?",
                         sources=["grounding"],
                     )
                 ],
@@ -60,9 +64,54 @@ class CliV3Tests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         payload = json.loads(result.stdout)
-        self.assertIn("query_plan", payload)
-        self.assertIn("ranked_candidates", payload)
+        self.assertEqual("1.3", payload["schema_version"])
+        self.assertEqual("test topic", payload["query"])
+        self.assertIn("results", payload)
         self.assertIn("clusters", payload)
+        self.assertIn("source_status", payload)
+
+    def test_invalid_plan_json_exits_nonzero(self):
+        """Malformed --plan JSON must fail fast, not silently fall back to the
+        internal planner and burn a paid run the user did not ask for."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                "skills/last30days/scripts/last30days.py",
+                "test topic",
+                "--mock",
+                "--emit=json",
+                "--plan",
+                "{not valid json",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("Invalid --plan JSON", result.stderr)
+
+    def test_invalid_plan_structure_exits_nonzero_without_fallback(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "skills/last30days/scripts/last30days.py",
+                "test topic",
+                "--mock",
+                "--emit=json",
+                "--plan",
+                json.dumps({"queries": {"web": ["Berlin"]}}),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("Invalid --plan schema", result.stderr)
+        self.assertNotIn("fallback-plan", result.stderr)
 
     def test_parse_search_flag_normalizes_aliases_and_dedupes(self):
         self.assertEqual(
@@ -83,9 +132,16 @@ class CliV3Tests(unittest.TestCase):
         )
         self.assertIn("threads", available)
 
-    def test_explicit_perplexity_search_uses_openrouter_key_without_include_sources(self):
+    def test_explicit_perplexity_search_uses_openrouter_fallback(self):
         available = cli.pipeline.available_sources(
             {"OPENROUTER_API_KEY": "test-key", "INCLUDE_SOURCES": ""},
+            requested_sources=["perplexity"],
+        )
+        self.assertIn("perplexity", available)
+
+    def test_explicit_perplexity_search_uses_direct_key_without_include_sources(self):
+        available = cli.pipeline.available_sources(
+            {"PERPLEXITY_API_KEY": "test-key", "INCLUDE_SOURCES": ""},
             requested_sources=["perplexity"],
         )
         self.assertIn("perplexity", available)
@@ -124,12 +180,364 @@ class CliV3Tests(unittest.TestCase):
             )
         self.assertIn("LAST30DAYS_DEFAULT_SEARCH", str(exc.exception))
 
+    def test_deep_research_preserves_default_source_selection(self):
+        self.assertIsNone(cli.add_deep_research_source(None))
+
+    def test_deep_research_extends_an_explicit_source_selection(self):
+        self.assertEqual(
+            ["reddit", "perplexity"],
+            cli.add_deep_research_source(["reddit"]),
+        )
+        self.assertEqual(
+            ["reddit", "perplexity"],
+            cli.add_deep_research_source(["reddit", "perplexity"]),
+        )
+
+    def test_deep_research_enables_exact_include_token(self):
+        config = {"INCLUDE_SOURCES": "notperplexity,reddit"}
+
+        cli.enable_deep_research_source(config)
+
+        self.assertEqual(
+            ["notperplexity", "reddit", "perplexity"],
+            config["INCLUDE_SOURCES"].split(","),
+        )
+
+    def test_deep_research_rejects_exact_exclusion(self):
+        config = {"EXCLUDE_SOURCES": "reddit,Perplexity"}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "conflicts with EXCLUDE_SOURCES=perplexity",
+        ):
+            cli.enable_deep_research_source(config)
+
     def test_build_parser_accepts_days_alias_and_preserves_topic_tokens(self):
         parser = cli.build_parser()
         args, extra = parser.parse_known_args(["--days", "7", "biosecurity", "ai", "agents"])
         self.assertEqual(7, args.lookback_days)
         self.assertEqual(["biosecurity", "ai", "agents"], args.topic)
         self.assertEqual([], extra)
+
+    def test_build_parser_accepts_web_backend_keyless(self):
+        """Regression for #905: CONFIGURATION.md documents --web-backend=keyless
+        to force the zero-key floor, but the choices list rejected it."""
+        parser = cli.build_parser()
+        args, extra = parser.parse_known_args(["--web-backend", "keyless", "biosecurity"])
+        self.assertEqual("keyless", args.web_backend)
+        self.assertEqual([], extra)
+
+    def test_deep_research_help_keeps_openrouter_fallback(self):
+        parser = cli.build_parser()
+        action = next(
+            candidate
+            for candidate in parser._actions
+            if "--deep-research" in candidate.option_strings
+        )
+        self.assertIn("PERPLEXITY_API_KEY", action.help)
+        self.assertIn("OPENROUTER_API_KEY", action.help)
+        self.assertIn("cannot be combined with competitor or vs-mode", action.help)
+
+    def test_deep_research_rejects_modes_without_a_positional_topic(self):
+        for argv in (
+            ["last30days.py", "--discover", "agents", "--deep-research"],
+            ["last30days.py", "--drill", "cluster-1", "--deep-research"],
+        ):
+            with self.subTest(argv=argv), mock.patch.object(
+                cli.env,
+                "get_config",
+                return_value={},
+            ), mock.patch.object(
+                cli,
+                "_run_discover",
+            ) as discover_mock, mock.patch.object(
+                cli,
+                "_run_drill",
+            ) as drill_mock, mock.patch.dict(
+                os.environ,
+                {"LAST30DAYS_SKIP_PREFLIGHT": "1"},
+                clear=False,
+            ), mock.patch.object(sys, "argv", argv):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    rc = cli.main()
+
+            self.assertEqual(2, rc)
+            discover_mock.assert_not_called()
+            drill_mock.assert_not_called()
+            self.assertIn("requires a normal positional topic", stderr.getvalue())
+
+    def test_deep_research_rejects_competitor_fanout_before_pipeline_run(self):
+        diag = {
+            "available_sources": ["perplexity"],
+            "providers": {"google": False, "openai": False, "xai": False},
+            "x_backend": None,
+            "bird_installed": True,
+            "bird_authenticated": False,
+            "bird_username": None,
+            "native_web_backend": None,
+        }
+        with mock.patch.object(
+            cli.env,
+            "get_config",
+            return_value={"PERPLEXITY_API_KEY": "pplx-test"},
+        ), mock.patch.object(
+            cli.pipeline,
+            "diagnose",
+            return_value=diag,
+        ) as diagnose_mock, mock.patch.object(
+            cli.pipeline,
+            "run",
+        ) as run_mock, mock.patch.object(
+            cli.ui,
+            "ProgressDisplay",
+            return_value=mock.Mock(),
+        ), mock.patch.object(
+            sys,
+            "argv",
+            [
+                "last30days.py",
+                "Alpha",
+                "vs",
+                "Beta",
+                "--mock",
+                "--deep-research",
+            ],
+        ):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                rc = cli.main()
+
+        self.assertEqual(2, rc)
+        diagnose_mock.assert_not_called()
+        run_mock.assert_not_called()
+        self.assertIn(
+            "one paid Deep Research run per user action",
+            stderr.getvalue(),
+        )
+
+    def test_openrouter_deep_research_bypasses_hosted_and_adds_source(self):
+        report = self.make_report(topic="why AI safety matters")
+        diag = {
+            "available_sources": ["reddit", "perplexity"],
+            "providers": {"google": False, "openai": False, "xai": False},
+            "x_backend": None,
+            "bird_installed": True,
+            "bird_authenticated": False,
+            "bird_username": None,
+            "native_web_backend": None,
+        }
+        with mock.patch.object(
+            cli.env,
+            "get_config",
+            return_value={"OPENROUTER_API_KEY": "openrouter-test"},
+        ), mock.patch.object(
+            cli.env,
+            "read_secret_env",
+            return_value="hosted-test-key",
+        ), mock.patch.object(
+            cli.pipeline,
+            "diagnose",
+            return_value=diag,
+        ), mock.patch.object(
+            cli.pipeline,
+            "run",
+            return_value=report,
+        ) as run_mock, mock.patch(
+            "lib.hosted.run_hosted",
+        ) as hosted_mock, mock.patch.object(
+            cli.ui,
+            "ProgressDisplay",
+            return_value=mock.Mock(),
+        ), mock.patch.object(
+            cli,
+            "emit_output",
+            return_value="# rendered",
+        ), mock.patch.dict(
+            os.environ,
+            {
+                "LAST30DAYS_API_BASE": "https://hosted.example.test",
+                "LAST30DAYS_SKIP_PREFLIGHT": "1",
+            },
+            clear=False,
+        ), mock.patch.object(
+            sys,
+            "argv",
+            [
+                "last30days.py",
+                "why",
+                "AI",
+                "safety",
+                "matters",
+                "--deep-research",
+                "--search",
+                "reddit",
+            ],
+        ):
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                rc = cli.main()
+
+        self.assertEqual(0, rc)
+        hosted_mock.assert_not_called()
+        requested_sources = run_mock.call_args.kwargs["requested_sources"]
+        self.assertEqual(["reddit", "perplexity"], requested_sources)
+        self.assertTrue(run_mock.call_args.kwargs["config"]["_deep_research"])
+
+    def _run_perplexity_search_type_cli(self, argv_extra, config, *, hosted):
+        report = self.make_report(topic="rust releases")
+        diag = {
+            "available_sources": ["reddit"],
+            "providers": {"google": False, "openai": False, "xai": False},
+            "x_backend": None,
+            "bird_installed": True,
+            "bird_authenticated": False,
+            "bird_username": None,
+            "native_web_backend": None,
+        }
+        environ = {"LAST30DAYS_SKIP_PREFLIGHT": "1"}
+        if hosted:
+            environ["LAST30DAYS_API_BASE"] = "https://hosted.example.test"
+        stderr = io.StringIO()
+        with mock.patch.object(
+            cli.env, "get_config", return_value=dict(config),
+        ), mock.patch.object(
+            cli.env, "read_secret_env",
+            return_value="hosted-test-key" if hosted else None,
+        ), mock.patch.object(
+            cli.pipeline, "diagnose", return_value=diag,
+        ), mock.patch.object(
+            cli.pipeline, "run", return_value=report,
+        ) as run_mock, mock.patch(
+            "lib.hosted.run_hosted", return_value=0,
+        ) as hosted_mock, mock.patch(
+            "lib.resolve.auto_resolve", return_value={},
+        ), mock.patch.object(
+            cli.ui, "ProgressDisplay", return_value=mock.Mock(),
+        ), mock.patch.object(
+            cli, "emit_output", return_value="# rendered",
+        ), mock.patch.dict(
+            os.environ, environ, clear=False,
+        ), mock.patch.object(
+            sys, "argv", ["last30days.py", "rust", "releases", *argv_extra],
+        ):
+            if not hosted:
+                os.environ.pop("LAST30DAYS_API_BASE", None)
+            with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                rc = cli.main()
+        return rc, run_mock, hosted_mock, stderr.getvalue()
+
+    def test_perplexity_search_type_flag_bypasses_hosted_with_one_notice(self):
+        rc, run_mock, hosted_mock, err = self._run_perplexity_search_type_cli(
+            ["--perplexity-search-type", "fast"],
+            {"PERPLEXITY_API_KEY": "pplx-test"},
+            hosted=True,
+        )
+
+        self.assertEqual(0, rc)
+        hosted_mock.assert_not_called()
+        run_mock.assert_called_once()
+        config = run_mock.call_args.kwargs["config"]
+        self.assertEqual("fast", config["LAST30DAYS_PERPLEXITY_SEARCH_TYPE"])
+        self.assertEqual(1, err.count("--perplexity-search-type"))
+        self.assertIn("bypassing the hosted backend", err)
+        self.assertNotIn("does not apply LAST30DAYS_PERPLEXITY_SEARCH_TYPE", err)
+
+    def test_perplexity_search_type_flag_without_direct_key_stays_hosted(self):
+        rc, run_mock, hosted_mock, err = self._run_perplexity_search_type_cli(
+            ["--perplexity-search-type", "fast"],
+            {"OPENROUTER_API_KEY": "or-test"},
+            hosted=True,
+        )
+
+        self.assertEqual(0, rc)
+        hosted_mock.assert_called_once()
+        run_mock.assert_not_called()
+        self.assertEqual(1, err.count("no direct PERPLEXITY_API_KEY is configured"))
+        self.assertNotIn("bypassing the hosted backend", err)
+
+    def test_search_type_flag_without_direct_key_matches_no_flag_routing(self):
+        # Without a direct key the flag cannot apply, so hosted routing and its
+        # local-only option checks must match a run without the flag.
+        for extra in (["--x-posts", "https://x.com/a/status/1"], ["--emit=json", "--json-profile=agent"]):
+            plain_rc, plain_run, plain_hosted, _ = self._run_perplexity_search_type_cli(
+                extra, {"OPENROUTER_API_KEY": "or-test"}, hosted=True,
+            )
+            flag_rc, flag_run, flag_hosted, _ = self._run_perplexity_search_type_cli(
+                ["--perplexity-search-type", "fast", *extra],
+                {"OPENROUTER_API_KEY": "or-test"},
+                hosted=True,
+            )
+            self.assertEqual(plain_rc, flag_rc, extra)
+            self.assertEqual(plain_run.call_count, flag_run.call_count, extra)
+            self.assertEqual(plain_hosted.call_count, flag_hosted.call_count, extra)
+
+    def test_env_only_perplexity_search_type_stays_hosted_with_one_note(self):
+        rc, run_mock, hosted_mock, err = self._run_perplexity_search_type_cli(
+            [], {"LAST30DAYS_PERPLEXITY_SEARCH_TYPE": "fast"}, hosted=True,
+        )
+
+        self.assertEqual(0, rc)
+        hosted_mock.assert_called_once()
+        run_mock.assert_not_called()
+        self.assertEqual(
+            1,
+            err.count("hosted backend does not apply LAST30DAYS_PERPLEXITY_SEARCH_TYPE"),
+        )
+        self.assertNotIn("bypassing the hosted backend", err)
+
+    def test_hosted_without_perplexity_search_type_is_unchanged(self):
+        rc, run_mock, hosted_mock, err = self._run_perplexity_search_type_cli(
+            [], {}, hosted=True,
+        )
+
+        self.assertEqual(0, rc)
+        hosted_mock.assert_called_once()
+        run_mock.assert_not_called()
+        self.assertNotIn("search type", err.lower())
+        self.assertNotIn("SEARCH_TYPE", err)
+
+    def test_perplexity_search_type_flag_does_not_enable_perplexity(self):
+        _, baseline_run, _, _ = self._run_perplexity_search_type_cli(
+            [], {"PERPLEXITY_API_KEY": "pplx-test"}, hosted=False,
+        )
+        rc, flagged_run, _, err = self._run_perplexity_search_type_cli(
+            ["--perplexity-search-type", "fast"],
+            {"PERPLEXITY_API_KEY": "pplx-test"},
+            hosted=False,
+        )
+
+        self.assertEqual(0, rc)
+        self.assertEqual(
+            baseline_run.call_args.kwargs["requested_sources"],
+            flagged_run.call_args.kwargs["requested_sources"],
+        )
+        self.assertNotIn("perplexity", flagged_run.call_args.kwargs["requested_sources"] or [])
+        config = flagged_run.call_args.kwargs["config"]
+        self.assertEqual("fast", config["LAST30DAYS_PERPLEXITY_SEARCH_TYPE"])
+        self.assertNotIn("INCLUDE_SOURCES", config)
+        self.assertNotIn("bypassing the hosted backend", err)
+
+    def test_perplexity_search_type_flag_overrides_env_value(self):
+        _, run_mock, _, _ = self._run_perplexity_search_type_cli(
+            ["--perplexity-search-type", "web"],
+            {"LAST30DAYS_PERPLEXITY_SEARCH_TYPE": "fast"},
+            hosted=False,
+        )
+
+        config = run_mock.call_args.kwargs["config"]
+        self.assertEqual("web", config["LAST30DAYS_PERPLEXITY_SEARCH_TYPE"])
+
+    def test_build_parser_still_accepts_other_web_backend_values(self):
+        parser = cli.build_parser()
+        for value in ("auto", "brave", "exa", "serper", "parallel", "parallel-mcp", "none"):
+            args, extra = parser.parse_known_args(["--web-backend", value, "biosecurity"])
+            self.assertEqual(value, args.web_backend)
+            self.assertEqual([], extra)
+
+    def test_build_parser_rejects_invalid_web_backend(self):
+        parser = cli.build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_known_args(["--web-backend", "bogus", "biosecurity"])
 
     def test_build_parser_accepts_explicit_output_file(self):
         parser = cli.build_parser()
@@ -139,6 +547,77 @@ class CliV3Tests(unittest.TestCase):
         self.assertEqual("results/run.json", args.output)
         self.assertEqual(["biosecurity"], args.topic)
         self.assertEqual([], extra)
+
+    def test_build_parser_accepts_result_cap_overrides(self):
+        parser = cli.build_parser()
+        args, extra = parser.parse_known_args(
+            ["--max-results", "200", "--max-per-source", "60",
+             "--max-source-fetches", "8", "figma config 2026"]
+        )
+        self.assertEqual(200, args.max_results)
+        self.assertEqual(60, args.max_per_source)
+        self.assertEqual(8, args.max_source_fetches)
+        self.assertEqual(["figma config 2026"], args.topic)
+        self.assertEqual([], extra)
+
+    def test_result_cap_overrides_default_to_none(self):
+        parser = cli.build_parser()
+        args, _ = parser.parse_known_args(["figma config 2026"])
+        self.assertIsNone(args.max_results)
+        self.assertIsNone(args.max_per_source)
+        self.assertIsNone(args.max_source_fetches)
+
+    def test_research_unknown_flag_fails_before_config_load(self):
+        with mock.patch.object(
+            cli.env, "get_config", side_effect=AssertionError("config should not load")
+        ), mock.patch.object(sys, "argv", ["last30days.py", "topic", "--save"]):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr), self.assertRaises(SystemExit) as exc:
+                cli.main()
+        self.assertEqual(2, exc.exception.code)
+        self.assertIn("--save", stderr.getvalue())
+
+    def test_agent_is_skill_argument_not_python_cli_flag(self):
+        with mock.patch.object(
+            cli.env, "get_config", side_effect=AssertionError("config should not load")
+        ), mock.patch.object(sys, "argv", ["last30days.py", "topic", "--agent"]):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr), self.assertRaises(SystemExit) as exc:
+                cli.main()
+        self.assertEqual(2, exc.exception.code)
+        self.assertIn("skill arguments", stderr.getvalue())
+
+    def test_agent_error_includes_other_unknown_flags(self):
+        with mock.patch.object(
+            cli.env, "get_config", side_effect=AssertionError("config should not load")
+        ), mock.patch.object(sys, "argv", ["last30days.py", "topic", "--agent", "--save"]):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr), self.assertRaises(SystemExit) as exc:
+                cli.main()
+        self.assertEqual(2, exc.exception.code)
+        message = stderr.getvalue()
+        self.assertIn("--agent", message)
+        self.assertIn("--save", message)
+
+    def test_setup_passthrough_flags_remain_scoped_to_setup(self):
+        with mock.patch.object(cli.env, "get_config", return_value={}), \
+             mock.patch("lib.setup_wizard.run_github_auth", return_value={"status": "cancelled"}), \
+             mock.patch.object(sys, "argv", ["last30days.py", "setup", "--github"]):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                rc = cli.main()
+        self.assertEqual(0, rc)
+
+    def test_setup_rejects_unknown_passthrough_flag_before_config_load(self):
+        with mock.patch.object(
+            cli.env, "get_config", side_effect=AssertionError("config should not load")
+        ), mock.patch.object(sys, "argv", ["last30days.py", "setup", "--bad"]):
+            stderr = io.StringIO()
+            with redirect_stderr(stderr), self.assertRaises(SystemExit) as exc:
+                cli.main()
+        self.assertEqual(2, exc.exception.code)
+        self.assertIn("--bad", stderr.getvalue())
 
     def test_ensure_supported_python_rejects_old_interpreter_with_actionable_error(self):
         stderr = io.StringIO()
@@ -154,9 +633,9 @@ class CliV3Tests(unittest.TestCase):
     def test_ensure_supported_python_allows_supported_interpreter(self):
         cli.ensure_supported_python((3, 12, 0))
 
-    def test_missing_sources_for_promo_prefers_reddit_x_then_web(self):
+    def test_missing_sources_for_promo_treats_x_as_optional(self):
         self.assertEqual(
-            "both",
+            "reddit",
             cli._missing_sources_for_promo({"available_sources": ["youtube"]}),
         )
         self.assertEqual(
@@ -169,6 +648,31 @@ class CliV3Tests(unittest.TestCase):
             cli._missing_sources_for_promo(
                 {"available_sources": ["reddit", "x", "grounding"], "native_web_backend": "brave"}
             ),
+        )
+
+    def test_optional_x_omission_is_post_result_copy_for_default_runs(self):
+        note = cli._optional_x_omission_text(
+            {"available_sources": ["reddit", "youtube", "grounding"]},
+            None,
+        )
+        self.assertEqual(
+            "Optional source omitted: X/Twitter was not enabled; research "
+            "continued with the available sources.",
+            note,
+        )
+
+    def test_optional_x_omission_is_suppressed_when_x_active_or_search_explicit(self):
+        self.assertIsNone(
+            cli._optional_x_omission_text(
+                {"available_sources": ["reddit", "x", "youtube"]},
+                None,
+            )
+        )
+        self.assertIsNone(
+            cli._optional_x_omission_text(
+                {"available_sources": ["reddit", "youtube"]},
+                ["reddit", "youtube"],
+            )
         )
         # ...or suppressed entirely on a native-search host.
         self.assertIsNone(
@@ -188,7 +692,7 @@ class CliV3Tests(unittest.TestCase):
         brief = cli.emit_output(report, "brief")
 
         self.assertIn("# last30days v", compact)
-        self.assertIn('"topic": "OpenClaw vs NanoClaw"', json_output)
+        self.assertIn('"query": "OpenClaw vs NanoClaw"', json_output)
         self.assertIsInstance(context, str)
         self.assertIn("# Production Brief:", brief)
 
@@ -201,15 +705,140 @@ class CliV3Tests(unittest.TestCase):
             path = cli.save_output(report, "json", tmp)
             self.assertEqual(".json", path.suffix)
             payload = json.loads(path.read_text())
-            self.assertEqual("OpenClaw vs NanoClaw", payload["topic"])
+            self.assertEqual("OpenClaw vs NanoClaw", payload["query"])
+
+    def test_compact_emit_saves_full_artifact_not_compact_render(self):
+        """A --emit=compact --save-dir run must save the complete debug
+        artifact (all clusters plus per-source items), not the compact stdout
+        render. Saving the compact render made most collected evidence
+        unrecoverable from the raw file (#923)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "skills/last30days/scripts/last30days.py",
+                    "compact save probe",
+                    "--mock",
+                    "--emit=compact",
+                    f"--save-dir={tmp}",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            saved = list(Path(tmp).glob("*.md"))
+            self.assertEqual(1, len(saved), saved)
+            content = saved[0].read_text(encoding="utf-8")
+            self.assertIn("## All Items by Source", content)
+            self.assertNotIn("## All Items by Source", result.stdout)
+
+    def test_save_output_uses_unique_dated_fallback(self):
+        report = self.make_report()
+        with tempfile.TemporaryDirectory() as tmp:
+            save_dir = Path(tmp)
+            today = datetime.now().strftime("%Y-%m-%d")
+            base = save_dir / "openclaw-vs-nanoclaw-raw.md"
+            dated = save_dir / f"openclaw-vs-nanoclaw-raw-{today}.md"
+            base.write_text("base content", encoding="utf-8")
+            dated.write_text("dated content", encoding="utf-8")
+
+            saved = cli.save_output(report, "md", tmp)
+
+            self.assertEqual((save_dir / f"openclaw-vs-nanoclaw-raw-{today}-1.md").resolve(), saved)
+            self.assertEqual("base content", base.read_text(encoding="utf-8"))
+            self.assertEqual("dated content", dated.read_text(encoding="utf-8"))
+            self.assertTrue(saved.exists())
+
+    def test_save_output_render_fn_footer_names_actual_collision_path(self):
+        from lib import render as render_module
+
+        report = self.make_report()
+        with tempfile.TemporaryDirectory() as tmp:
+            save_dir = Path(tmp)
+            today = datetime.now().strftime("%Y-%m-%d")
+            base = save_dir / "openclaw-vs-nanoclaw-raw.md"
+            dated = save_dir / f"openclaw-vs-nanoclaw-raw-{today}.md"
+            base.write_text("base content", encoding="utf-8")
+            dated.write_text("dated content", encoding="utf-8")
+
+            def render_fn(actual_path: Path) -> str:
+                return render_module.render_compact(report, save_path=str(actual_path))
+
+            saved = cli.save_output(report, "md", tmp, render_fn=render_fn)
+
+            expected = (save_dir / f"openclaw-vs-nanoclaw-raw-{today}-1.md").resolve()
+            self.assertEqual(expected, saved.resolve())
+            content = saved.read_text(encoding="utf-8")
+            self.assertIn(f"Raw results saved to {saved}", content)
+            self.assertNotIn(f"Raw results saved to {base}", content)
+            self.assertNotIn(f"Raw results saved to {dated}", content)
+            self.assertEqual("base content", base.read_text(encoding="utf-8"))
+            self.assertEqual("dated content", dated.read_text(encoding="utf-8"))
+
+    def test_save_output_removes_reserved_candidate_when_deferred_render_fails(self):
+        report = self.make_report()
+        with tempfile.TemporaryDirectory() as tmp:
+            save_dir = Path(tmp)
+
+            def fail_render(_actual_path: Path) -> str:
+                raise RuntimeError("render failed")
+
+            with self.assertRaisesRegex(RuntimeError, "render failed"):
+                cli.save_output(report, "md", tmp, render_fn=fail_render)
+
+            self.assertEqual([], list(save_dir.iterdir()))
+
+    def test_render_save_and_print_uses_actual_collision_path_in_file_and_stdout(self):
+        report = self.make_report(topic="Collision Topic")
+        with tempfile.TemporaryDirectory() as tmp:
+            save_dir = Path(tmp)
+            today = datetime.now().strftime("%Y-%m-%d")
+            base = save_dir / "collision-topic-raw.md"
+            dated = save_dir / f"collision-topic-raw-{today}.md"
+            expected = save_dir / f"collision-topic-raw-{today}-1.md"
+            base.write_text("base content", encoding="utf-8")
+            dated.write_text("dated content", encoding="utf-8")
+            args = types.SimpleNamespace(
+                topic=["Collision Topic"],
+                competitors=None,
+                competitors_list=None,
+                competitors_plan=None,
+                drill=False,
+                register=None,
+                emit="compact",
+                output=None,
+                save_dir=str(save_dir),
+                save_suffix="",
+                json_profile="agent",
+                publish_html=False,
+            )
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                rc = cli._render_save_and_print(args, report, None, None, {})
+
+            self.assertEqual(0, rc)
+            expected_display = cli.compute_output_path_display(str(expected))
+            footer = f"Raw results saved to {expected_display}"
+            self.assertTrue(expected.exists())
+            self.assertIn(footer, expected.read_text(encoding="utf-8"))
+            self.assertIn(footer, stdout.getvalue())
+            self.assertEqual("base content", base.read_text(encoding="utf-8"))
+            self.assertEqual("dated content", dated.read_text(encoding="utf-8"))
 
     def test_save_output_writes_utf8_encoded_markdown(self):
         report = self.make_report()
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch("pathlib.Path.write_text", autospec=True, return_value=1) as write_text:
-                cli.save_output(report, "md", tmp)
-        _, kwargs = write_text.call_args
-        self.assertEqual("utf-8", kwargs.get("encoding"))
+            path = cli.save_output(report, "md", tmp)
+            raw = path.read_bytes()
+            content = path.read_text(encoding="utf-8")
+        self.assertIn(report.topic, content)
+        # Verify the raw bytes decode cleanly as UTF-8.
+        self.assertEqual(content, raw.decode("utf-8"))
 
     def test_save_rendered_output_writes_exact_file_path(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -258,6 +887,7 @@ class CliV3Tests(unittest.TestCase):
         report = self.make_report()
 
         success_store = types.SimpleNamespace(
+            scoped_db=lambda _path: contextlib.nullcontext(),
             init_db=mock.Mock(),
             add_topic=mock.Mock(return_value={"id": 7}),
             record_run=mock.Mock(return_value=11),
@@ -276,6 +906,7 @@ class CliV3Tests(unittest.TestCase):
         )
 
         failure_store = types.SimpleNamespace(
+            scoped_db=lambda _path: contextlib.nullcontext(),
             init_db=mock.Mock(),
             add_topic=mock.Mock(return_value={"id": 7}),
             record_run=mock.Mock(return_value=12),
@@ -323,7 +954,7 @@ class CliV3Tests(unittest.TestCase):
             source_counts={"grounding": 0},
             display_sources=["grounding"],
         )
-        fake_progress.show_promo.assert_called_once_with("both", diag=diag)
+        fake_progress.show_promo.assert_called_once_with("reddit", diag=diag)
         self.assertIn("# rendered", stdout.getvalue())
 
     def test_main_writes_rendered_output_to_explicit_file(self):
@@ -362,7 +993,6 @@ class CliV3Tests(unittest.TestCase):
             self.assertIn(f"[last30days] Saved output to {output_path.resolve()}", stderr.getvalue())
 
     def test_main_combines_output_and_save_dir_for_comparison_html(self):
-        report = self.make_report()
         diag = {
             "available_sources": ["grounding"],
             "providers": {"google": True, "openai": False, "xai": False},
@@ -373,12 +1003,16 @@ class CliV3Tests(unittest.TestCase):
             "native_web_backend": "brave",
         }
         fake_progress = mock.Mock()
+
+        def run_report(*_args, **kwargs):
+            return self.make_report(topic=kwargs["topic"])
+
         with tempfile.TemporaryDirectory() as tmp:
             output_path = Path(tmp) / "exports" / "comparison.html"
             save_dir = Path(tmp) / "saved"
             with mock.patch.object(cli.env, "get_config", return_value={}), \
                  mock.patch.object(cli.pipeline, "diagnose", return_value=diag), \
-                 mock.patch.object(cli.pipeline, "run", return_value=report), \
+                 mock.patch.object(cli.pipeline, "run", side_effect=run_report), \
                  mock.patch.object(cli.ui, "ProgressDisplay", return_value=fake_progress), \
                  mock.patch.object(
                      cli, "emit_comparison_output", return_value="<html>comparison</html>"
@@ -403,17 +1037,29 @@ class CliV3Tests(unittest.TestCase):
 
             self.assertEqual(0, rc)
             output_display = cli.compute_output_path_display(str(output_path))
-            _, kwargs = emit_comparison.call_args
-            self.assertEqual(output_display, kwargs["save_path"])
+            comparison_saved = save_dir / "alpha-vs-beta-raw-html.html"
+            self.assertEqual(2, emit_comparison.call_count)
+            first_kwargs = emit_comparison.call_args_list[0].kwargs
+            second_kwargs = emit_comparison.call_args_list[1].kwargs
+            self.assertEqual(output_display, first_kwargs["save_path"])
+            comparison_display = cli.compute_output_path_display(str(comparison_saved))
+            self.assertEqual(comparison_display, second_kwargs["save_path"])
             self.assertEqual("<html>comparison</html>\n", stdout.getvalue())
             self.assertEqual("<html>comparison</html>", output_path.read_text(encoding="utf-8"))
-            comparison_saved = save_dir / "alpha-vs-beta-raw-html.html"
             self.assertEqual(
                 "<html>comparison</html>",
                 comparison_saved.read_text(encoding="utf-8"),
             )
+            peer_saved = save_dir / "beta-raw-html.html"
+            self.assertEqual("<html>peer</html>", peer_saved.read_text(encoding="utf-8"))
             self.assertIn(f"[last30days] Saved output to {output_path.resolve()}", stderr.getvalue())
             self.assertIn(f"[last30days] Saved output to {comparison_saved.resolve()}", stderr.getvalue())
+            self.assertIn(f"[last30days] Saved output to {peer_saved.resolve()}", stderr.getvalue())
+            self.assertIn(
+                f"[last30days] Comparison artifact set: main={comparison_saved.resolve()}; "
+                f"peers={peer_saved.resolve()}",
+                stderr.getvalue(),
+            )
 
     def test_main_canonicalizes_explicit_github_repo_flags(self):
         report = self.make_report()
@@ -459,6 +1105,148 @@ class CliV3Tests(unittest.TestCase):
             f"saw {[c.kwargs.get('github_repos') for c in run_mock.call_args_list]}",
         )
         self.assertIn("[GitHub] Canonicalized repos:", stderr.getvalue())
+
+    def test_main_passes_trustpilot_domain_to_pipeline_run(self):
+        """The user-set flag must reach pipeline.run verbatim with
+        provenance user-set (is_hint False) on the single-topic path."""
+        report = self.make_report()
+        diag = {
+            "available_sources": ["grounding"],
+            "providers": {"google": True, "openai": False, "xai": False},
+            "x_backend": None,
+            "bird_installed": True,
+            "bird_authenticated": False,
+            "bird_username": None,
+            "native_web_backend": "brave",
+        }
+        with mock.patch.object(cli.env, "get_config", return_value={}), \
+             mock.patch.object(cli.pipeline, "diagnose", return_value=diag), \
+             mock.patch.object(cli.pipeline, "run", return_value=report) as run_mock, \
+             mock.patch.object(cli, "emit_output", return_value="# rendered"), \
+             mock.patch.object(sys, "argv", [
+                 "last30days.py",
+                 "ThriftBooks",
+                 "--trustpilot-domain",
+                 "www.thriftbooks.com",
+             ]):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                rc = cli.main()
+        self.assertEqual(0, rc)
+        main_call = next(
+            (c for c in run_mock.call_args_list
+             if c.kwargs.get("trustpilot_domain") == "www.thriftbooks.com"),
+            None,
+        )
+        self.assertIsNotNone(
+            main_call,
+            f"No pipeline.run call carried trustpilot_domain; saw "
+            f"{[c.kwargs.get('trustpilot_domain') for c in run_mock.call_args_list]}",
+        )
+        self.assertFalse(main_call.kwargs.get("trustpilot_domain_is_hint"))
+
+    def test_trustpilot_domain_auto_activates_include_sources(self):
+        """Explicit --trustpilot-domain must activate Trustpilot even when
+        INCLUDE_SOURCES omits it (#873) — otherwise the flag silently no-ops."""
+        report = self.make_report(topic="Weber grills")
+        diag = {
+            "available_sources": ["tiktok", "instagram"],
+            "providers": {"google": True, "openai": False, "xai": False},
+            "x_backend": None,
+            "bird_installed": True,
+            "bird_authenticated": False,
+            "bird_username": None,
+            "native_web_backend": "brave",
+        }
+        config = {"INCLUDE_SOURCES": "tiktok,instagram"}
+        with mock.patch.object(cli.env, "get_config", return_value=config), \
+             mock.patch.object(cli.pipeline, "diagnose", return_value=diag), \
+             mock.patch.object(cli.pipeline, "run", return_value=report) as run_mock, \
+             mock.patch.object(cli, "emit_output", return_value="# rendered"), \
+             mock.patch.object(sys, "argv", [
+                 "last30days.py",
+                 "Weber grills",
+                 "--trustpilot-domain",
+                 "weber.co.uk",
+             ]):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                rc = cli.main()
+        self.assertEqual(0, rc)
+        self.assertIn("trustpilot", config["INCLUDE_SOURCES"].lower())
+        self.assertIn("[Trustpilot] --trustpilot-domain=weber.co.uk activated", stderr.getvalue())
+        main_call = run_mock.call_args_list[0]
+        self.assertEqual(main_call.kwargs.get("trustpilot_domain"), "weber.co.uk")
+
+    def test_trustpilot_domain_auto_activates_with_search_filter(self):
+        """When --search omits trustpilot, the explicit domain flag must still
+        append it to requested_sources so the intersection filter cannot drop it."""
+        report = self.make_report(topic="Weber grills")
+        diag = {
+            "available_sources": ["tiktok", "instagram", "trustpilot"],
+            "providers": {"google": True, "openai": False, "xai": False},
+            "x_backend": None,
+            "bird_installed": True,
+            "bird_authenticated": False,
+            "bird_username": None,
+            "native_web_backend": "brave",
+        }
+        config = {"INCLUDE_SOURCES": "tiktok,instagram"}
+        with mock.patch.object(cli.env, "get_config", return_value=config), \
+             mock.patch.object(cli.pipeline, "diagnose", return_value=diag), \
+             mock.patch.object(cli.pipeline, "run", return_value=report) as run_mock, \
+             mock.patch.object(cli, "emit_output", return_value="# rendered"), \
+             mock.patch.object(sys, "argv", [
+                 "last30days.py",
+                 "Weber grills",
+                 "--search",
+                 "tiktok,instagram",
+                 "--trustpilot-domain",
+                 "weber.co.uk",
+             ]):
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                rc = cli.main()
+        self.assertEqual(0, rc)
+        requested = run_mock.call_args_list[0].kwargs.get("requested_sources") or []
+        self.assertIn("trustpilot", requested)
+
+    def test_trustpilot_domain_respects_exclude_sources(self):
+        config = {"INCLUDE_SOURCES": "tiktok", "EXCLUDE_SOURCES": "trustpilot"}
+        requested = cli.activate_trustpilot_for_explicit_domain(
+            config, ["tiktok"], reason="--trustpilot-domain=weber.co.uk",
+        )
+        self.assertEqual(requested, ["tiktok"])
+        self.assertNotIn("trustpilot", config["INCLUDE_SOURCES"].lower())
+
+
+class ActivateTrustpilotHelperTests(unittest.TestCase):
+    def test_plan_has_explicit_trustpilot_domain(self):
+        self.assertTrue(cli.plan_has_explicit_trustpilot_domain({
+            "traeger": {"trustpilot_domain": "traeger.com"},
+        }))
+        self.assertFalse(cli.plan_has_explicit_trustpilot_domain({
+            "traeger": {"x_handle": "Traeger"},
+        }))
+        self.assertFalse(cli.plan_has_explicit_trustpilot_domain(None))
+
+    def test_activate_adds_include_and_requested(self):
+        config = {"INCLUDE_SOURCES": "tiktok,instagram"}
+        requested = cli.activate_trustpilot_for_explicit_domain(
+            config, ["tiktok", "instagram"], reason="--trustpilot-domain=x.com",
+        )
+        self.assertIn("trustpilot", config["INCLUDE_SOURCES"].lower())
+        self.assertEqual(requested, ["tiktok", "instagram", "trustpilot"])
+
+    def test_activate_noop_when_already_present(self):
+        config = {"INCLUDE_SOURCES": "tiktok,trustpilot"}
+        requested = cli.activate_trustpilot_for_explicit_domain(
+            config, ["trustpilot"], reason="--trustpilot-domain=x.com",
+        )
+        self.assertEqual(config["INCLUDE_SOURCES"], "tiktok,trustpilot")
+        self.assertEqual(requested, ["trustpilot"])
+
 
 if __name__ == "__main__":
     unittest.main()
